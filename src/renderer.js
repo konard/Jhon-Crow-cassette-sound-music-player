@@ -407,23 +407,56 @@ function createCassettePlayer() {
     metalness: 0.3
   });
 
-  // Left reel (supply)
+  // Tape material (brown tape color)
+  const tapeMaterial = new THREE.MeshStandardMaterial({
+    color: 0x3a2a1a,
+    roughness: 0.7,
+    metalness: 0.1
+  });
+
+  // Constants for tape ring sizing
+  const hubRadius = 0.006;  // Inner hub radius
+  const maxTapeRadius = reelRadius;  // Maximum outer radius of tape
+
+  // Left reel (supply) - starts with full tape
   const leftReelGroup = new THREE.Group();
   leftReelGroup.name = 'leftReel';
   leftReelGroup.position.set(-reelSpacing, 0, 0);
   const leftReelMesh = new THREE.Mesh(reelGeometry, reelMaterial);
   leftReelMesh.rotation.x = Math.PI / 2;
   leftReelGroup.add(leftReelMesh);
+
+  // Left tape ring (supply reel tape)
+  const leftTapeRing = new THREE.Mesh(
+    new THREE.RingGeometry(hubRadius, maxTapeRadius, 32),
+    tapeMaterial
+  );
+  leftTapeRing.name = 'tapeRing';
+  leftTapeRing.position.z = 0.001;  // Slightly in front of reel
+  leftReelGroup.add(leftTapeRing);
   reelGroup.add(leftReelGroup);
 
-  // Right reel (take-up)
+  // Right reel (take-up) - starts with minimal tape
   const rightReelGroup = new THREE.Group();
   rightReelGroup.name = 'rightReel';
   rightReelGroup.position.set(reelSpacing, 0, 0);
   const rightReelMesh = new THREE.Mesh(reelGeometry, reelMaterial);
   rightReelMesh.rotation.x = Math.PI / 2;
   rightReelGroup.add(rightReelMesh);
+
+  // Right tape ring (take-up reel tape)
+  const rightTapeRing = new THREE.Mesh(
+    new THREE.RingGeometry(hubRadius, hubRadius + 0.002, 32),
+    tapeMaterial
+  );
+  rightTapeRing.name = 'tapeRing';
+  rightTapeRing.position.z = 0.001;  // Slightly in front of reel
+  rightReelGroup.add(rightTapeRing);
   reelGroup.add(rightReelGroup);
+
+  // Store tape ring constants for animation
+  reelGroup.userData.hubRadius = hubRadius;
+  reelGroup.userData.maxTapeRadius = maxTapeRadius;
 
   // Reel center hubs (white with hexagonal shape)
   const hubGeometry = new THREE.CylinderGeometry(0.006, 0.006, 0.006, 6);
@@ -883,8 +916,44 @@ async function loadTrack(index) {
   audioState.audioElement.src = 'file://' + track.path;
   await audioState.audioElement.load();
 
+  // Reset tape rings to initial state (full left, empty right)
+  resetTapeRings();
+
   // Save current track index for restoration on restart
   saveCurrentSettings();
+}
+
+// Reset tape rings to initial state (left full, right empty)
+function resetTapeRings() {
+  if (!cassettePlayer || !cassettePlayer.userData.reelGroup) return;
+
+  const reelGroup = cassettePlayer.userData.reelGroup;
+  const hubRadius = reelGroup.userData.hubRadius;
+  const maxTapeRadius = reelGroup.userData.maxTapeRadius;
+
+  const leftReel = reelGroup.getObjectByName('leftReel');
+  const rightReel = reelGroup.getObjectByName('rightReel');
+
+  if (!leftReel || !rightReel) return;
+
+  const leftTapeRing = leftReel.getObjectByName('tapeRing');
+  const rightTapeRing = rightReel.getObjectByName('tapeRing');
+
+  if (!leftTapeRing || !rightTapeRing) return;
+
+  const minTapeOffset = 0.002;
+
+  // Reset left reel to full tape
+  if (leftTapeRing.geometry) {
+    leftTapeRing.geometry.dispose();
+  }
+  leftTapeRing.geometry = new THREE.RingGeometry(hubRadius, maxTapeRadius, 32);
+
+  // Reset right reel to minimal tape
+  if (rightTapeRing.geometry) {
+    rightTapeRing.geometry.dispose();
+  }
+  rightTapeRing.geometry = new THREE.RingGeometry(hubRadius, hubRadius + minTapeOffset, 32);
 }
 
 async function play() {
@@ -1339,9 +1408,66 @@ function animate() {
 
     if (leftReel) leftReel.rotation.z = reelRotation;
     if (rightReel) rightReel.rotation.z = reelRotation * 1.1; // Slightly faster
+
+    // Update tape ring sizes based on playback progress
+    updateTapeRings();
   }
 
   renderer.render(scene, camera);
+}
+
+// Update tape ring sizes based on current playback position
+function updateTapeRings() {
+  if (!audioState.audioElement || !cassettePlayer.userData.reelGroup) return;
+
+  const duration = audioState.audioElement.duration;
+  const currentTime = audioState.audioElement.currentTime;
+
+  // If duration is not available yet, use default state
+  if (!duration || isNaN(duration)) return;
+
+  const progress = currentTime / duration;  // 0 to 1
+
+  const reelGroup = cassettePlayer.userData.reelGroup;
+  const hubRadius = reelGroup.userData.hubRadius;
+  const maxTapeRadius = reelGroup.userData.maxTapeRadius;
+
+  const leftReel = reelGroup.getObjectByName('leftReel');
+  const rightReel = reelGroup.getObjectByName('rightReel');
+
+  if (!leftReel || !rightReel) return;
+
+  const leftTapeRing = leftReel.getObjectByName('tapeRing');
+  const rightTapeRing = rightReel.getObjectByName('tapeRing');
+
+  if (!leftTapeRing || !rightTapeRing) return;
+
+  // Calculate tape radii based on progress
+  // Left reel (supply): starts full, ends with minimal tape
+  // Right reel (take-up): starts minimal, ends full
+  // Use square root for more realistic tape distribution (area-based)
+  const tapeRange = maxTapeRadius - hubRadius;
+  const minTapeOffset = 0.002;  // Minimum visible tape
+
+  // Left reel: decreases from full to minimal
+  const leftTapeAmount = 1 - progress;  // 1 at start, 0 at end
+  const leftOuterRadius = hubRadius + minTapeOffset + (tapeRange - minTapeOffset) * Math.sqrt(leftTapeAmount);
+
+  // Right reel: increases from minimal to full
+  const rightTapeAmount = progress;  // 0 at start, 1 at end
+  const rightOuterRadius = hubRadius + minTapeOffset + (tapeRange - minTapeOffset) * Math.sqrt(rightTapeAmount);
+
+  // Update geometry for left tape ring
+  if (leftTapeRing.geometry) {
+    leftTapeRing.geometry.dispose();
+  }
+  leftTapeRing.geometry = new THREE.RingGeometry(hubRadius, leftOuterRadius, 32);
+
+  // Update geometry for right tape ring
+  if (rightTapeRing.geometry) {
+    rightTapeRing.geometry.dispose();
+  }
+  rightTapeRing.geometry = new THREE.RingGeometry(hubRadius, rightOuterRadius, 32);
 }
 
 // ============================================================================
