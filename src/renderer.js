@@ -9,7 +9,7 @@ const CONFIG = {
     fov: 45,
     near: 0.1,
     far: 1000,
-    position: { x: 0, y: 0.05, z: 0.1 },  // Centered x, starting at max zoom (z=0.1)
+    position: { x: 0, y: 0.05, z: 0.15 },  // Centered x, starting at max zoom without going inside
     lookAt: { x: 0, y: 0.04, z: 0 }
   },
   colors: {
@@ -910,9 +910,9 @@ function onMouseWheel(event) {
   const zoomSpeed = 0.01;
   const direction = event.deltaY > 0 ? 1 : -1;
 
-  // Zoom range: 0.08 (max zoom, very close) to 0.6 (min zoom, far)
+  // Zoom range: 0.12 (max zoom, close but not inside) to 0.6 (min zoom, far)
   camera.position.z += direction * zoomSpeed;
-  camera.position.z = Math.max(0.08, Math.min(0.6, camera.position.z));
+  camera.position.z = Math.max(0.12, Math.min(0.6, camera.position.z));
 }
 
 async function onKeyDown(event) {
