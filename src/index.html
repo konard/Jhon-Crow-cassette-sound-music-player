@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+  <title>Cassette Music Player</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: transparent;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #app {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    /* Window controls */
+    #window-controls {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      display: flex;
+      gap: 6px;
+      z-index: 1000;
+      -webkit-app-region: no-drag;
+    }
+
+    .window-btn {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .window-btn:hover {
+      opacity: 0.8;
+    }
+
+    #btn-minimize { background: #ffbd2e; }
+    #btn-maximize { background: #27c93f; }
+    #btn-close { background: #ff5f56; }
+
+    /* Drag region */
+    #drag-region {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 40px;
+      -webkit-app-region: drag;
+      z-index: 999;
+    }
+
+    /* 3D Canvas */
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    #three-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Track info overlay */
+    #track-overlay {
+      position: absolute;
+      top: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.7);
+      color: #7cfc7c;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 300;
+      letter-spacing: 1px;
+      text-align: center;
+      max-width: 80%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    #track-overlay.visible {
+      opacity: 1;
+    }
+
+    /* Status bar */
+    #status-bar {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.6);
+      color: rgba(255, 255, 255, 0.7);
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      text-align: center;
+      z-index: 100;
+    }
+
+    /* Controls hint */
+    #controls-hint {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.5);
+      color: rgba(255, 255, 255, 0.5);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 10px;
+      text-align: center;
+      z-index: 100;
+    }
+
+    /* Loading indicator */
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #7cfc7c;
+      font-size: 16px;
+      z-index: 200;
+    }
+
+    #loading.hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="drag-region"></div>
+    <div id="window-controls">
+      <button class="window-btn" id="btn-minimize" title="Minimize"></button>
+      <button class="window-btn" id="btn-maximize" title="Maximize"></button>
+      <button class="window-btn" id="btn-close" title="Close"></button>
+    </div>
+    <div id="canvas-container">
+      <canvas id="three-canvas"></canvas>
+    </div>
+    <div id="track-overlay">No Track</div>
+    <div id="controls-hint">Click buttons on player | Double-click to open folder | Scroll to zoom</div>
+    <div id="status-bar">Drop files or double-click to load music</div>
+    <div id="loading">Loading...</div>
+  </div>
+  <script src="./lib/three.min.js"></script>
+  <script src="./renderer.js"></script>
+</body>
+</html>

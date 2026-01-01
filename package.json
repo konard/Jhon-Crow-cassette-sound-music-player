@@ -1,0 +1,66 @@
+{
+  "name": "cassette-music-player",
+  "version": "1.0.0",
+  "description": "A high-performance cassette-style music player for Windows with 3D visuals and authentic tape sound effects",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --win --publish never",
+    "build:dir": "electron-builder --win --dir",
+    "build:portable": "electron-builder --win portable --publish never"
+  },
+  "keywords": [
+    "music",
+    "player",
+    "cassette",
+    "walkman",
+    "sony",
+    "retro",
+    "3d",
+    "audio",
+    "tape"
+  ],
+  "author": "Jhon-Crow",
+  "license": "Unlicense",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "build": {
+    "appId": "com.jhoncrow.cassette-music-player",
+    "productName": "Cassette Music Player",
+    "icon": "assets/icon.png",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
+  }
+}
