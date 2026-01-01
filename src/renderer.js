@@ -433,7 +433,7 @@ function createCassettePlayer() {
     tapeMaterial
   );
   leftTapeRing.name = 'tapeRing';
-  leftTapeRing.position.z = 0.001;  // Slightly in front of reel
+  leftTapeRing.position.z = 0.003;  // In front of reel, visible above hub base
   leftReelGroup.add(leftTapeRing);
   reelGroup.add(leftReelGroup);
 
@@ -451,7 +451,7 @@ function createCassettePlayer() {
     tapeMaterial
   );
   rightTapeRing.name = 'tapeRing';
-  rightTapeRing.position.z = 0.001;  // Slightly in front of reel
+  rightTapeRing.position.z = 0.003;  // In front of reel, visible above hub base
   rightReelGroup.add(rightTapeRing);
   reelGroup.add(rightReelGroup);
 
