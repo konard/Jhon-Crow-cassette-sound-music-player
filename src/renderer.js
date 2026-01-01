@@ -75,9 +75,12 @@ let screenCanvas, screenCtx, screenTexture;
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
-function init() {
+async function init() {
   // Hide loading
   document.getElementById('loading').classList.add('hidden');
+
+  // Load saved settings
+  await loadSavedSettings();
 
   // Setup Three.js
   setupThreeJS();
@@ -89,8 +92,69 @@ function init() {
   // Setup event listeners
   setupEventListeners();
 
+  // Apply loaded appearance settings
+  updateBackgroundGradient();
+
   // Start animation loop
   animate();
+}
+
+// Load settings from persistent storage
+async function loadSavedSettings() {
+  try {
+    if (window.electronAPI && window.electronAPI.getSettings) {
+      const settings = await window.electronAPI.getSettings();
+      if (settings) {
+        // Apply audio settings
+        if (settings.audio) {
+          CONFIG.audio.volume = settings.audio.volume ?? CONFIG.audio.volume;
+          CONFIG.audio.tapeHissLevel = settings.audio.tapeHissLevel ?? CONFIG.audio.tapeHissLevel;
+          CONFIG.audio.wowFlutterLevel = settings.audio.wowFlutterLevel ?? CONFIG.audio.wowFlutterLevel;
+          CONFIG.audio.saturationLevel = settings.audio.saturationLevel ?? CONFIG.audio.saturationLevel;
+          CONFIG.audio.lowCutoff = settings.audio.lowCutoff ?? CONFIG.audio.lowCutoff;
+          CONFIG.audio.highCutoff = settings.audio.highCutoff ?? CONFIG.audio.highCutoff;
+        }
+        // Apply appearance settings
+        if (settings.appearance) {
+          CONFIG.appearance.gradientEnabled = settings.appearance.gradientEnabled ?? CONFIG.appearance.gradientEnabled;
+          CONFIG.appearance.gradientStartColor = settings.appearance.gradientStartColor ?? CONFIG.appearance.gradientStartColor;
+          CONFIG.appearance.gradientEndColor = settings.appearance.gradientEndColor ?? CONFIG.appearance.gradientEndColor;
+          CONFIG.appearance.gradientAngle = settings.appearance.gradientAngle ?? CONFIG.appearance.gradientAngle;
+          CONFIG.appearance.backgroundOpacity = settings.appearance.backgroundOpacity ?? CONFIG.appearance.backgroundOpacity;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
+}
+
+// Save current settings to persistent storage
+function saveCurrentSettings() {
+  try {
+    if (window.electronAPI && window.electronAPI.saveSettings) {
+      const settings = {
+        audio: {
+          volume: CONFIG.audio.volume,
+          tapeHissLevel: CONFIG.audio.tapeHissLevel,
+          wowFlutterLevel: CONFIG.audio.wowFlutterLevel,
+          saturationLevel: CONFIG.audio.saturationLevel,
+          lowCutoff: CONFIG.audio.lowCutoff,
+          highCutoff: CONFIG.audio.highCutoff
+        },
+        appearance: {
+          gradientEnabled: CONFIG.appearance.gradientEnabled,
+          gradientStartColor: CONFIG.appearance.gradientStartColor,
+          gradientEndColor: CONFIG.appearance.gradientEndColor,
+          gradientAngle: CONFIG.appearance.gradientAngle,
+          backgroundOpacity: CONFIG.appearance.backgroundOpacity
+        }
+      };
+      window.electronAPI.saveSettings(settings);
+    }
+  } catch (error) {
+    console.error('Error saving settings:', error);
+  }
 }
 
 function setupThreeJS() {
@@ -1097,12 +1161,14 @@ async function onKeyDown(event) {
       if (audioState.effectNodes) {
         CONFIG.audio.volume = Math.min(1, CONFIG.audio.volume + 0.1);
         audioState.effectNodes.mainGain.gain.value = CONFIG.audio.volume;
+        saveCurrentSettings();
       }
       break;
     case 'ArrowDown':
       if (audioState.effectNodes) {
         CONFIG.audio.volume = Math.max(0, CONFIG.audio.volume - 0.1);
         audioState.effectNodes.mainGain.gain.value = CONFIG.audio.volume;
+        saveCurrentSettings();
       }
       break;
     case 'KeyO':
@@ -1180,6 +1246,9 @@ function closeSettings() {
   // Reset background dimming when closing settings
   overlay.style.background = 'rgba(0, 0, 0, 0.7)';
   settingsOpen = false;
+
+  // Save settings when closing the settings panel
+  saveCurrentSettings();
 }
 
 function toggleSettings() {
@@ -1343,6 +1412,9 @@ function setupSettingsEventListeners() {
       audioState.effectNodes.flutterLFOGain.gain.value = 0.0005 * 0.5;
       audioState.effectNodes.saturation.curve = createSaturationCurve(0.4);
     }
+
+    // Save settings immediately after reset
+    saveCurrentSettings();
   });
 
   // Open folder button
@@ -1416,6 +1488,9 @@ function setupSettingsEventListeners() {
 
     // Apply changes
     updateBackgroundGradient();
+
+    // Save settings immediately after reset
+    saveCurrentSettings();
   });
 
   // Add scroll wheel support for all sliders
