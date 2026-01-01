@@ -73,24 +73,54 @@ let dragStartMouse = { x: 0, y: 0 };
 let screenCanvas, screenCtx, screenTexture;
 
 // ============================================================================
+// SPLASH SCREEN PROGRESS HELPER
+// ============================================================================
+function updateProgress(progress, message) {
+  if (window.electronAPI && window.electronAPI.updateSplashProgress) {
+    window.electronAPI.updateSplashProgress(progress, message);
+  }
+}
+
+function notifyAppReady() {
+  if (window.electronAPI && window.electronAPI.notifyAppReady) {
+    window.electronAPI.notifyAppReady();
+  }
+}
+
+// ============================================================================
 // INITIALIZATION
 // ============================================================================
 function init() {
-  // Hide loading
-  document.getElementById('loading').classList.add('hidden');
+  updateProgress(50, 'Setting up 3D scene...');
 
   // Setup Three.js
   setupThreeJS();
+
+  updateProgress(70, 'Creating cassette player...');
 
   // Create cassette player (side view)
   cassettePlayer = createCassettePlayer();
   scene.add(cassettePlayer);
 
+  updateProgress(85, 'Initializing controls...');
+
   // Setup event listeners
   setupEventListeners();
 
+  updateProgress(95, 'Starting animation...');
+
   // Start animation loop
   animate();
+
+  // Hide loading indicator in main window
+  document.getElementById('loading').classList.add('hidden');
+
+  updateProgress(100, 'Ready!');
+
+  // Small delay to show 100% before closing splash
+  setTimeout(() => {
+    notifyAppReady();
+  }, 300);
 }
 
 function setupThreeJS() {

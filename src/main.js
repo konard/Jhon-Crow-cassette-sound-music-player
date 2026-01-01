@@ -5,8 +5,9 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage } = require
 const path = require('path');
 const fs = require('fs');
 
-// Keep a global reference of the window object
+// Keep a global reference of the window objects
 let mainWindow = null;
+let splashWindow = null;
 let tray = null;
 let isPlaying = false;
 
@@ -101,8 +102,55 @@ function updateTrayIcon() {
   }
 }
 
+// Create splash window with loading progress bar
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 320,
+    height: 220,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    icon: path.join(__dirname, '../assets/icon.png'),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'splash-preload.js')
+    }
+  });
+
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+
+  // Prevent window from being closed during loading
+  splashWindow.on('close', (e) => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      e.preventDefault();
+    }
+  });
+
+  return splashWindow;
+}
+
+// Update splash screen progress
+function updateSplashProgress(progress, message) {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send('splash-progress', progress, message);
+  }
+}
+
+// Close splash window when main window is ready
+function closeSplashWindow() {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+    splashWindow = null;
+  }
+}
+
 function createWindow() {
   // Create the browser window with transparent, frameless design
+  // Start hidden until fully loaded to avoid showing blank window
   mainWindow = new BrowserWindow({
     width: 500,
     height: 400,
@@ -111,6 +159,7 @@ function createWindow() {
     frame: false,
     transparent: true,
     resizable: true,
+    show: false,  // Start hidden
     icon: path.join(__dirname, '../assets/icon.png'),
     webPreferences: {
       nodeIntegration: false,
@@ -119,8 +168,16 @@ function createWindow() {
     }
   });
 
+  // Update splash progress when window starts loading
+  updateSplashProgress(10, 'Initializing window...');
+
   // Load the index.html file
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
+
+  // Update splash progress when DOM is ready
+  mainWindow.webContents.on('dom-ready', () => {
+    updateSplashProgress(40, 'Loading 3D engine...');
+  });
 
   // Open DevTools in development mode
   if (process.argv.includes('--dev')) {
@@ -144,8 +201,15 @@ function createWindow() {
 
 // Create window when Electron is ready
 app.whenReady().then(() => {
-  createWindow();
-  createTray();
+  // Show splash screen immediately for fast visual feedback
+  createSplashWindow();
+
+  // Small delay to ensure splash is visible before heavy work
+  setTimeout(() => {
+    updateSplashProgress(5, 'Starting application...');
+    createWindow();
+    createTray();
+  }, 100);
 });
 
 // Quit when all windows are closed
@@ -305,5 +369,19 @@ ipcMain.on('show-window', () => {
   if (mainWindow) {
     mainWindow.show();
     mainWindow.focus();
+  }
+});
+
+// Splash screen progress updates from renderer
+ipcMain.on('splash-progress', (event, progress, message) => {
+  updateSplashProgress(progress, message);
+});
+
+// Main window ready - show it and close splash
+ipcMain.on('app-ready', () => {
+  if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+    closeSplashWindow();
   }
 });

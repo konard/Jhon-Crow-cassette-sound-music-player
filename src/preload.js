@@ -25,5 +25,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Tray integration
   updatePlayState: (isPlaying) => ipcRenderer.send('update-play-state', isPlaying),
   onTrayTogglePlay: (callback) => ipcRenderer.on('tray-toggle-play', callback),
-  showWindow: () => ipcRenderer.send('show-window')
+  showWindow: () => ipcRenderer.send('show-window'),
+
+  // Splash screen progress reporting
+  updateSplashProgress: (progress, message) => ipcRenderer.send('splash-progress', progress, message),
+  notifyAppReady: () => ipcRenderer.send('app-ready')
 });
