@@ -411,7 +411,8 @@ function createCassettePlayer() {
   const tapeMaterial = new THREE.MeshStandardMaterial({
     color: 0x3a2a1a,
     roughness: 0.7,
-    metalness: 0.1
+    metalness: 0.1,
+    side: THREE.DoubleSide  // Visible from both sides for flat ring geometry
   });
 
   // Constants for tape ring sizing
@@ -1424,7 +1425,7 @@ function updateTapeRings() {
   const currentTime = audioState.audioElement.currentTime;
 
   // If duration is not available yet, use default state
-  if (!duration || isNaN(duration)) return;
+  if (!duration || isNaN(duration) || !isFinite(duration)) return;
 
   const progress = currentTime / duration;  // 0 to 1
 
