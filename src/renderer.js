@@ -32,6 +32,13 @@ const CONFIG = {
     lowCutoff: 80,
     highCutoff: 12000,
     volume: 0.7
+  },
+  appearance: {
+    gradientEnabled: false,
+    gradientStartColor: '#1a1a2e',
+    gradientEndColor: '#2a2a4e',
+    gradientAngle: 180,
+    backgroundOpacity: 80
   }
 };
 
@@ -858,6 +865,30 @@ function updateStatusBar(text) {
   document.getElementById('status-bar').textContent = text;
 }
 
+// Update background gradient based on current appearance settings
+function updateBackgroundGradient() {
+  const gradientEl = document.getElementById('background-gradient');
+  if (!gradientEl) return;
+
+  if (CONFIG.appearance.gradientEnabled) {
+    // Convert hex color to rgba with opacity
+    const startColor = hexToRgba(CONFIG.appearance.gradientStartColor, CONFIG.appearance.backgroundOpacity / 100);
+    const endColor = hexToRgba(CONFIG.appearance.gradientEndColor, CONFIG.appearance.backgroundOpacity / 100);
+
+    gradientEl.style.background = `linear-gradient(${CONFIG.appearance.gradientAngle}deg, ${startColor}, ${endColor})`;
+  } else {
+    gradientEl.style.background = 'transparent';
+  }
+}
+
+// Convert hex color to rgba string
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // ============================================================================
 // EVENT HANDLERS
 // ============================================================================
@@ -1177,6 +1208,15 @@ function syncSettingsUI() {
       document.getElementById('checkbox-always-on-top').checked = value;
     });
   }
+
+  // Sync appearance settings
+  document.getElementById('checkbox-gradient-enabled').checked = CONFIG.appearance.gradientEnabled;
+  document.getElementById('color-gradient-start').value = CONFIG.appearance.gradientStartColor;
+  document.getElementById('color-gradient-end').value = CONFIG.appearance.gradientEndColor;
+  document.getElementById('slider-gradient-angle').value = CONFIG.appearance.gradientAngle;
+  document.getElementById('angle-value').textContent = CONFIG.appearance.gradientAngle + '°';
+  document.getElementById('slider-bg-opacity').value = CONFIG.appearance.backgroundOpacity;
+  document.getElementById('opacity-value').textContent = CONFIG.appearance.backgroundOpacity + '%';
 }
 
 function setupSettingsEventListeners() {
@@ -1306,6 +1346,60 @@ function setupSettingsEventListeners() {
     if (window.electronAPI && window.electronAPI.setAlwaysOnTop) {
       window.electronAPI.setAlwaysOnTop(e.target.checked);
     }
+  });
+
+  // Appearance settings - Gradient enabled checkbox
+  document.getElementById('checkbox-gradient-enabled').addEventListener('change', (e) => {
+    CONFIG.appearance.gradientEnabled = e.target.checked;
+    updateBackgroundGradient();
+  });
+
+  // Gradient start color
+  document.getElementById('color-gradient-start').addEventListener('input', (e) => {
+    CONFIG.appearance.gradientStartColor = e.target.value;
+    updateBackgroundGradient();
+  });
+
+  // Gradient end color
+  document.getElementById('color-gradient-end').addEventListener('input', (e) => {
+    CONFIG.appearance.gradientEndColor = e.target.value;
+    updateBackgroundGradient();
+  });
+
+  // Gradient angle slider
+  document.getElementById('slider-gradient-angle').addEventListener('input', (e) => {
+    CONFIG.appearance.gradientAngle = parseInt(e.target.value);
+    document.getElementById('angle-value').textContent = e.target.value + '°';
+    updateBackgroundGradient();
+  });
+
+  // Background opacity slider
+  document.getElementById('slider-bg-opacity').addEventListener('input', (e) => {
+    CONFIG.appearance.backgroundOpacity = parseInt(e.target.value);
+    document.getElementById('opacity-value').textContent = e.target.value + '%';
+    updateBackgroundGradient();
+  });
+
+  // Reset appearance button
+  document.getElementById('btn-reset-appearance').addEventListener('click', () => {
+    // Reset to default values
+    CONFIG.appearance.gradientEnabled = false;
+    CONFIG.appearance.gradientStartColor = '#1a1a2e';
+    CONFIG.appearance.gradientEndColor = '#2a2a4e';
+    CONFIG.appearance.gradientAngle = 180;
+    CONFIG.appearance.backgroundOpacity = 80;
+
+    // Update UI
+    document.getElementById('checkbox-gradient-enabled').checked = false;
+    document.getElementById('color-gradient-start').value = '#1a1a2e';
+    document.getElementById('color-gradient-end').value = '#2a2a4e';
+    document.getElementById('slider-gradient-angle').value = 180;
+    document.getElementById('angle-value').textContent = '180°';
+    document.getElementById('slider-bg-opacity').value = 80;
+    document.getElementById('opacity-value').textContent = '80%';
+
+    // Apply changes
+    updateBackgroundGradient();
   });
 
   // Add scroll wheel support for all sliders
