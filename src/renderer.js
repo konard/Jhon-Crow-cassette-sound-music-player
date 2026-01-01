@@ -9,7 +9,7 @@ const CONFIG = {
     fov: 45,
     near: 0.1,
     far: 1000,
-    position: { x: 0.15, y: 0.05, z: 0.35 },
+    position: { x: 0, y: 0.05, z: 0.1 },  // Centered x, starting at max zoom (z=0.1)
     lookAt: { x: 0, y: 0.04, z: 0 }
   },
   colors: {
@@ -86,9 +86,9 @@ function setupThreeJS() {
   const canvas = document.getElementById('three-canvas');
   const container = document.getElementById('canvas-container');
 
-  // Create scene
+  // Create scene with transparent background
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(CONFIG.colors.background);
+  // No scene.background set - allows transparent window
 
   // Create camera
   camera = new THREE.PerspectiveCamera(
@@ -906,12 +906,13 @@ async function handleButtonPress(buttonType) {
 function onMouseWheel(event) {
   event.preventDefault();
 
-  // Zoom in/out
+  // Zoom in/out (centered on player)
   const zoomSpeed = 0.01;
   const direction = event.deltaY > 0 ? 1 : -1;
 
+  // Zoom range: 0.08 (max zoom, very close) to 0.6 (min zoom, far)
   camera.position.z += direction * zoomSpeed;
-  camera.position.z = Math.max(0.15, Math.min(0.6, camera.position.z));
+  camera.position.z = Math.max(0.08, Math.min(0.6, camera.position.z));
 }
 
 async function onKeyDown(event) {
