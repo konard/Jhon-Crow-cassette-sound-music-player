@@ -58,6 +58,10 @@ let audioState = {
 // Animation state
 let reelRotation = 0;
 
+// Drag state for window movement via cassette
+let isDragging = false;
+let dragStartMouse = { x: 0, y: 0 };
+
 // UI references
 let screenCanvas, screenCtx, screenTexture;
 
@@ -882,6 +886,11 @@ function setupEventListeners() {
     await openFolder();
   });
 
+  // Mouse drag for window movement via cassette
+  canvas.addEventListener('mousedown', onCanvasMouseDown);
+  document.addEventListener('mousemove', onCanvasMouseMove);
+  document.addEventListener('mouseup', onCanvasMouseUp);
+
   // Mouse wheel for zoom
   canvas.addEventListener('wheel', onMouseWheel);
 
@@ -910,6 +919,78 @@ function setupEventListeners() {
 function onContextMenu(event) {
   event.preventDefault();
   openSettings();
+}
+
+// Check if click is on a button
+function isClickOnButton(event) {
+  const canvas = document.getElementById('three-canvas');
+  const rect = canvas.getBoundingClientRect();
+
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const buttonsGroup = cassettePlayer.userData.buttonsGroup;
+  if (buttonsGroup) {
+    const buttonMeshes = buttonsGroup.children.filter(c => c.userData.isButton);
+    const intersects = raycaster.intersectObjects(buttonMeshes);
+    return intersects.length > 0;
+  }
+  return false;
+}
+
+// Check if click is on the cassette body
+function isClickOnCassette(event) {
+  const canvas = document.getElementById('three-canvas');
+  const rect = canvas.getBoundingClientRect();
+
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  // Check intersection with all cassette player meshes
+  const intersects = raycaster.intersectObjects(cassettePlayer.children, true);
+  return intersects.length > 0;
+}
+
+function onCanvasMouseDown(event) {
+  // Only start drag on left mouse button
+  if (event.button !== 0) return;
+
+  // Don't drag if clicking on buttons
+  if (isClickOnButton(event)) return;
+
+  // Only drag if clicking on the cassette
+  if (!isClickOnCassette(event)) return;
+
+  isDragging = true;
+  dragStartMouse = { x: event.screenX, y: event.screenY };
+
+  // Signal main process to prepare for dragging
+  if (window.electronAPI && window.electronAPI.startWindowDrag) {
+    window.electronAPI.startWindowDrag();
+  }
+}
+
+function onCanvasMouseMove(event) {
+  if (!isDragging) return;
+
+  const deltaX = event.screenX - dragStartMouse.x;
+  const deltaY = event.screenY - dragStartMouse.y;
+
+  // Update start position for next move calculation
+  dragStartMouse = { x: event.screenX, y: event.screenY };
+
+  // Move the window
+  if (window.electronAPI && window.electronAPI.moveWindow) {
+    window.electronAPI.moveWindow(deltaX, deltaY);
+  }
+}
+
+function onCanvasMouseUp(event) {
+  isDragging = false;
 }
 
 function onCanvasClick(event) {
