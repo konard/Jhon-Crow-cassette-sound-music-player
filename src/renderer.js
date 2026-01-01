@@ -408,19 +408,19 @@ function createCassettePlayer() {
   rightFrame.position.set(windowCenterX + windowWidth/2 + frameWidth/2, windowCenterY, windowZ);
   group.add(rightFrame);
 
-  // Cassette window (fully transparent to show tape reels behind it)
-  const cassetteWindow = new THREE.Mesh(
-    new THREE.BoxGeometry(windowWidth, windowHeight, 0.002),
+  // Cassette window glass (semi-transparent to show tape reels behind it)
+  const cassetteWindowGlass = new THREE.Mesh(
+    new THREE.BoxGeometry(windowWidth, windowHeight, 0.001),
     new THREE.MeshStandardMaterial({
-      color: 0x4a4a5a,
-      roughness: 0.1,
-      metalness: 0.0,
+      color: 0x88aacc,  // Slight blue-ish tint for glass effect
+      roughness: 0.05,
+      metalness: 0.1,
       transparent: true,
-      opacity: 0  // Fully transparent to show tape reels
+      opacity: 0.25  // Semi-transparent glass
     })
   );
-  cassetteWindow.position.set(-bodyWidth * 0.05, bodyHeight * 0.58, bodyDepth / 2 + 0.003);
-  group.add(cassetteWindow);
+  cassetteWindowGlass.position.set(windowCenterX, windowCenterY, windowZ + 0.002);  // In front of frame
+  group.add(cassetteWindowGlass);
 
   // Cassette reels group
   const reelGroup = new THREE.Group();
@@ -428,6 +428,19 @@ function createCassettePlayer() {
   // Position reels just behind the window frame (at windowZ - 0.002)
   // This keeps them visible through the transparent window but behind the frame
   reelGroup.position.set(windowCenterX, windowCenterY, windowZ - 0.002);
+
+  // Dark background behind the reels (inside cassette interior)
+  const reelBackgroundMaterial = new THREE.MeshStandardMaterial({
+    color: 0x1a1a1a,  // Very dark gray/almost black
+    roughness: 0.9,
+    metalness: 0.0
+  });
+  const reelBackground = new THREE.Mesh(
+    new THREE.PlaneGeometry(windowWidth * 0.95, windowHeight * 0.95),
+    reelBackgroundMaterial
+  );
+  reelBackground.position.set(0, 0, -0.005);  // Behind the reels
+  reelGroup.add(reelBackground);
 
   const reelRadius = 0.015;  // Slightly smaller reel for better fit
   const reelSpacing = 0.022;  // Closer together to fit within window
@@ -468,7 +481,7 @@ function createCassettePlayer() {
     tapeMaterial
   );
   leftTapeRing.name = 'tapeRing';
-  leftTapeRing.position.z = 0.003;  // In front of reel, visible above hub base
+  leftTapeRing.position.z = 0.001;  // Behind the hub so hub is always visible
   leftReelGroup.add(leftTapeRing);
   reelGroup.add(leftReelGroup);
 
@@ -486,7 +499,7 @@ function createCassettePlayer() {
     tapeMaterial
   );
   rightTapeRing.name = 'tapeRing';
-  rightTapeRing.position.z = 0.003;  // In front of reel, visible above hub base
+  rightTapeRing.position.z = 0.001;  // Behind the hub so hub is always visible
   rightReelGroup.add(rightTapeRing);
   reelGroup.add(rightReelGroup);
 
@@ -504,12 +517,12 @@ function createCassettePlayer() {
 
   const leftHub = new THREE.Mesh(hubGeometry, hubMaterial);
   leftHub.rotation.x = Math.PI / 2;
-  leftHub.position.set(-reelSpacing, 0, 0.002);
+  leftHub.position.set(-reelSpacing, 0, 0.003);  // In front of tape ring
   reelGroup.add(leftHub);
 
   const rightHub = new THREE.Mesh(hubGeometry, hubMaterial);
   rightHub.rotation.x = Math.PI / 2;
-  rightHub.position.set(reelSpacing, 0, 0.002);
+  rightHub.position.set(reelSpacing, 0, 0.003);  // In front of tape ring
   reelGroup.add(rightHub);
 
   // Tape path between reels
