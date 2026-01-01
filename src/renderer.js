@@ -396,7 +396,8 @@ function createCassettePlayer() {
   // Cassette reels group
   const reelGroup = new THREE.Group();
   reelGroup.name = 'reels';
-  reelGroup.position.set(-bodyWidth * 0.05, bodyHeight * 0.58, bodyDepth / 2 + 0.005);
+  // Position reels inside the cassette body (negative z to be behind the window surface)
+  reelGroup.position.set(-bodyWidth * 0.05, bodyHeight * 0.58, bodyDepth / 2 - 0.003);
 
   const reelRadius = 0.018;
   const reelSpacing = 0.028;
@@ -416,8 +417,10 @@ function createCassettePlayer() {
   });
 
   // Constants for tape ring sizing
-  const hubRadius = 0.006;  // Inner hub radius
-  const maxTapeRadius = reelRadius;  // Maximum outer radius of tape
+  // Hub radius reduced by 2.5x per user feedback (was 0.006)
+  const hubRadius = 0.0024;  // Inner hub radius (reduced by 2.5x)
+  // Increase max tape radius for more visible tape (was reelRadius = 0.018)
+  const maxTapeRadius = 0.024;  // Maximum outer radius of tape (increased)
 
   // Left reel (take-up) - starts with minimal tape, fills during playback
   const leftReelGroup = new THREE.Group();
@@ -460,7 +463,8 @@ function createCassettePlayer() {
   reelGroup.userData.maxTapeRadius = maxTapeRadius;
 
   // Reel center hubs (white with hexagonal shape)
-  const hubGeometry = new THREE.CylinderGeometry(0.006, 0.006, 0.006, 6);
+  // Hub size reduced by 2.5x to match hubRadius (was 0.006)
+  const hubGeometry = new THREE.CylinderGeometry(hubRadius, hubRadius, 0.003, 6);
   const hubMaterial = new THREE.MeshStandardMaterial({
     color: 0xf5f5f5,
     roughness: 0.3
