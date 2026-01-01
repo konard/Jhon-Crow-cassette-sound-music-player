@@ -31,7 +31,8 @@ const CONFIG = {
     saturationLevel: 0.4,
     lowCutoff: 80,
     highCutoff: 12000,
-    volume: 0.7
+    volume: 0.7,
+    effectsEnabled: true
   },
   appearance: {
     gradientEnabled: false,
@@ -75,9 +76,12 @@ let screenCanvas, screenCtx, screenTexture;
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
-function init() {
+async function init() {
   // Hide loading
   document.getElementById('loading').classList.add('hidden');
+
+  // Load saved settings
+  await loadSavedSettings();
 
   // Setup Three.js
   setupThreeJS();
@@ -89,8 +93,109 @@ function init() {
   // Setup event listeners
   setupEventListeners();
 
+  // Apply loaded appearance settings
+  updateBackgroundGradient();
+
+  // Set initial visibility for bottom captions based on window size
+  updateBottomCaptionsVisibility();
+
   // Start animation loop
   animate();
+}
+
+// Load settings from persistent storage
+async function loadSavedSettings() {
+  try {
+    if (window.electronAPI && window.electronAPI.getSettings) {
+      const settings = await window.electronAPI.getSettings();
+      if (settings) {
+        // Apply audio settings
+        if (settings.audio) {
+          CONFIG.audio.volume = settings.audio.volume ?? CONFIG.audio.volume;
+          CONFIG.audio.tapeHissLevel = settings.audio.tapeHissLevel ?? CONFIG.audio.tapeHissLevel;
+          CONFIG.audio.wowFlutterLevel = settings.audio.wowFlutterLevel ?? CONFIG.audio.wowFlutterLevel;
+          CONFIG.audio.saturationLevel = settings.audio.saturationLevel ?? CONFIG.audio.saturationLevel;
+          CONFIG.audio.lowCutoff = settings.audio.lowCutoff ?? CONFIG.audio.lowCutoff;
+          CONFIG.audio.highCutoff = settings.audio.highCutoff ?? CONFIG.audio.highCutoff;
+          CONFIG.audio.effectsEnabled = settings.audio.effectsEnabled ?? CONFIG.audio.effectsEnabled;
+        }
+        // Apply appearance settings
+        if (settings.appearance) {
+          CONFIG.appearance.gradientEnabled = settings.appearance.gradientEnabled ?? CONFIG.appearance.gradientEnabled;
+          CONFIG.appearance.gradientStartColor = settings.appearance.gradientStartColor ?? CONFIG.appearance.gradientStartColor;
+          CONFIG.appearance.gradientEndColor = settings.appearance.gradientEndColor ?? CONFIG.appearance.gradientEndColor;
+          CONFIG.appearance.gradientAngle = settings.appearance.gradientAngle ?? CONFIG.appearance.gradientAngle;
+          CONFIG.appearance.backgroundOpacity = settings.appearance.backgroundOpacity ?? CONFIG.appearance.backgroundOpacity;
+        }
+        // Restore playback state (folder and track)
+        if (settings.playback && settings.playback.folderPath) {
+          await restorePlaybackState(settings.playback);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
+}
+
+// Restore playback state from saved settings
+async function restorePlaybackState(playbackSettings) {
+  try {
+    if (!playbackSettings.folderPath) return;
+
+    // Get audio files from the saved folder
+    const result = await window.electronAPI.getAudioFilesFromPath(playbackSettings.folderPath);
+    if (result && result.audioFiles && result.audioFiles.length > 0) {
+      audioState.folderPath = playbackSettings.folderPath;
+      audioState.audioFiles = result.audioFiles;
+
+      // Restore track index, clamping to valid range
+      let trackIndex = playbackSettings.currentTrackIndex || 0;
+      if (trackIndex >= audioState.audioFiles.length) {
+        trackIndex = 0;
+      }
+
+      audioState.currentTrackIndex = trackIndex;
+      const track = audioState.audioFiles[trackIndex];
+      updateScreenText(track.name);
+      updateStatusBar(`Restored: ${audioState.audioFiles.length} tracks`);
+    }
+  } catch (error) {
+    console.error('Error restoring playback state:', error);
+  }
+}
+
+// Save current settings to persistent storage
+function saveCurrentSettings() {
+  try {
+    if (window.electronAPI && window.electronAPI.saveSettings) {
+      const settings = {
+        audio: {
+          volume: CONFIG.audio.volume,
+          tapeHissLevel: CONFIG.audio.tapeHissLevel,
+          wowFlutterLevel: CONFIG.audio.wowFlutterLevel,
+          saturationLevel: CONFIG.audio.saturationLevel,
+          lowCutoff: CONFIG.audio.lowCutoff,
+          highCutoff: CONFIG.audio.highCutoff,
+          effectsEnabled: CONFIG.audio.effectsEnabled
+        },
+        appearance: {
+          gradientEnabled: CONFIG.appearance.gradientEnabled,
+          gradientStartColor: CONFIG.appearance.gradientStartColor,
+          gradientEndColor: CONFIG.appearance.gradientEndColor,
+          gradientAngle: CONFIG.appearance.gradientAngle,
+          backgroundOpacity: CONFIG.appearance.backgroundOpacity
+        },
+        playback: {
+          folderPath: audioState.folderPath,
+          currentTrackIndex: audioState.currentTrackIndex
+        }
+      };
+      window.electronAPI.saveSettings(settings);
+    }
+  } catch (error) {
+    console.error('Error saving settings:', error);
+  }
 }
 
 function setupThreeJS() {
@@ -157,6 +262,35 @@ function onWindowResize() {
   camera.aspect = container.clientWidth / container.clientHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(container.clientWidth, container.clientHeight);
+
+  // Hide bottom captions when window is small
+  updateBottomCaptionsVisibility();
+}
+
+// Show/hide UI elements based on window size
+function updateBottomCaptionsVisibility() {
+  const controlsHint = document.getElementById('controls-hint');
+  const statusBar = document.getElementById('status-bar');
+  const windowControls = document.getElementById('window-controls');
+
+  // Hide captions when window height is less than 200px
+  const captionThreshold = 200;
+  const isSmallHeight = window.innerHeight < captionThreshold;
+
+  if (controlsHint) {
+    controlsHint.style.display = isSmallHeight ? 'none' : 'block';
+  }
+  if (statusBar) {
+    statusBar.style.display = isSmallHeight ? 'none' : 'block';
+  }
+
+  // Hide window controls when window is very small (height or width < 120px)
+  const controlsThreshold = 120;
+  const isVerySmall = window.innerHeight < controlsThreshold || window.innerWidth < controlsThreshold;
+
+  if (windowControls) {
+    windowControls.style.display = isVerySmall ? 'none' : 'flex';
+  }
 }
 
 // ============================================================================
@@ -667,16 +801,32 @@ function connectAudioChain() {
   const nodes = audioState.effectNodes;
   const ctx = audioState.audioContext;
 
-  // Source -> highpass -> lowpass -> midBoost -> wowFlutter -> saturation -> mainGain -> destination
+  // Create a bypass gain node for direct connection
+  nodes.bypassGain = ctx.createGain();
+  nodes.bypassGain.gain.value = CONFIG.audio.effectsEnabled ? 0 : 1;
+
+  // Create an effects gain node
+  nodes.effectsGain = ctx.createGain();
+  nodes.effectsGain.gain.value = CONFIG.audio.effectsEnabled ? 1 : 0;
+
+  // Source -> bypass (direct to mainGain, no effects)
+  audioState.sourceNode.connect(nodes.bypassGain);
+  nodes.bypassGain.connect(nodes.mainGain);
+
+  // Source -> effects chain -> effectsGain -> mainGain
   audioState.sourceNode.connect(nodes.highpass);
   nodes.highpass.connect(nodes.lowpass);
   nodes.lowpass.connect(nodes.midBoost);
   nodes.midBoost.connect(nodes.wowFlutterDelay);
   nodes.wowFlutterDelay.connect(nodes.saturation);
-  nodes.saturation.connect(nodes.mainGain);
+  nodes.saturation.connect(nodes.effectsGain);
+  nodes.effectsGain.connect(nodes.mainGain);
 
-  // Noise (tape hiss) -> merger -> destination
+  // Noise (tape hiss) -> merger -> destination (only when effects enabled)
   nodes.noiseGain.connect(nodes.mainGain);
+  if (!CONFIG.audio.effectsEnabled) {
+    nodes.noiseGain.gain.value = 0;
+  }
 
   // Final output
   nodes.mainGain.connect(ctx.destination);
@@ -685,6 +835,29 @@ function connectAudioChain() {
   nodes.wowLFO.start();
   nodes.flutterLFO.start();
   nodes.noiseSource.start();
+}
+
+// Toggle all audio effects on/off
+function toggleAudioEffects(enabled) {
+  CONFIG.audio.effectsEnabled = enabled;
+
+  if (audioState.effectNodes) {
+    const nodes = audioState.effectNodes;
+
+    if (enabled) {
+      // Enable effects: effectsGain = 1, bypassGain = 0, restore noise
+      nodes.effectsGain.gain.value = 1;
+      nodes.bypassGain.gain.value = 0;
+      if (audioState.isPlaying) {
+        nodes.noiseGain.gain.value = 0.015 * CONFIG.audio.tapeHissLevel;
+      }
+    } else {
+      // Disable effects: effectsGain = 0, bypassGain = 1, mute noise
+      nodes.effectsGain.gain.value = 0;
+      nodes.bypassGain.gain.value = 1;
+      nodes.noiseGain.gain.value = 0;
+    }
+  }
 }
 
 // ============================================================================
@@ -709,6 +882,9 @@ async function loadTrack(index) {
   // Load audio
   audioState.audioElement.src = 'file://' + track.path;
   await audioState.audioElement.load();
+
+  // Save current track index for restoration on restart
+  saveCurrentSettings();
 }
 
 async function play() {
@@ -739,8 +915,8 @@ async function play() {
     showTrackOverlay(currentTrack.name);
   }
 
-  // Resume tape hiss noise
-  if (audioState.effectNodes && audioState.effectNodes.noiseGain) {
+  // Resume tape hiss noise (only if effects are enabled)
+  if (audioState.effectNodes && audioState.effectNodes.noiseGain && CONFIG.audio.effectsEnabled) {
     audioState.effectNodes.noiseGain.gain.value = 0.015 * CONFIG.audio.tapeHissLevel;
   }
 
@@ -833,6 +1009,8 @@ async function openFolder() {
       audioState.currentTrackIndex = 0;
       await loadTrack(0);
       updateStatusBar(`Loaded ${result.audioFiles.length} tracks`);
+      // Save playback state for restoration on restart
+      saveCurrentSettings();
     }
   } catch (error) {
     console.error('Error opening folder:', error);
@@ -848,6 +1026,8 @@ async function openFiles() {
       audioState.currentTrackIndex = 0;
       await loadTrack(0);
       updateStatusBar(`Loaded ${result.audioFiles.length} tracks`);
+      // Save playback state for restoration on restart
+      saveCurrentSettings();
     }
   } catch (error) {
     console.error('Error opening files:', error);
@@ -1097,12 +1277,14 @@ async function onKeyDown(event) {
       if (audioState.effectNodes) {
         CONFIG.audio.volume = Math.min(1, CONFIG.audio.volume + 0.1);
         audioState.effectNodes.mainGain.gain.value = CONFIG.audio.volume;
+        saveCurrentSettings();
       }
       break;
     case 'ArrowDown':
       if (audioState.effectNodes) {
         CONFIG.audio.volume = Math.max(0, CONFIG.audio.volume - 0.1);
         audioState.effectNodes.mainGain.gain.value = CONFIG.audio.volume;
+        saveCurrentSettings();
       }
       break;
     case 'KeyO':
@@ -1172,6 +1354,14 @@ function openSettings() {
   overlay.classList.add('visible');
   settingsOpen = true;
   syncSettingsUI();
+
+  // Check which tab is currently active and set overlay background accordingly
+  const activeTab = document.querySelector('.settings-tab.active');
+  if (activeTab && activeTab.getAttribute('data-tab') === 'appearance') {
+    overlay.style.background = 'transparent';
+  } else {
+    overlay.style.background = 'rgba(0, 0, 0, 0.7)';
+  }
 }
 
 function closeSettings() {
@@ -1180,6 +1370,9 @@ function closeSettings() {
   // Reset background dimming when closing settings
   overlay.style.background = 'rgba(0, 0, 0, 0.7)';
   settingsOpen = false;
+
+  // Save settings when closing the settings panel
+  saveCurrentSettings();
 }
 
 function toggleSettings() {
@@ -1209,6 +1402,9 @@ function syncSettingsUI() {
 
   document.getElementById('slider-highcut').value = CONFIG.audio.highCutoff;
   document.getElementById('highcut-value').textContent = CONFIG.audio.highCutoff + ' Hz';
+
+  // Sync effects enabled checkbox
+  document.getElementById('checkbox-effects-enabled').checked = CONFIG.audio.effectsEnabled;
 
   // Sync always-on-top checkbox
   if (window.electronAPI && window.electronAPI.getAlwaysOnTop) {
@@ -1343,6 +1539,9 @@ function setupSettingsEventListeners() {
       audioState.effectNodes.flutterLFOGain.gain.value = 0.0005 * 0.5;
       audioState.effectNodes.saturation.curve = createSaturationCurve(0.4);
     }
+
+    // Save settings immediately after reset
+    saveCurrentSettings();
   });
 
   // Open folder button
@@ -1355,6 +1554,12 @@ function setupSettingsEventListeners() {
   document.getElementById('btn-open-files').addEventListener('click', async () => {
     await openFiles();
     closeSettings();
+  });
+
+  // Effects enabled checkbox
+  document.getElementById('checkbox-effects-enabled').addEventListener('change', (e) => {
+    toggleAudioEffects(e.target.checked);
+    saveCurrentSettings();
   });
 
   // Always on top checkbox
@@ -1416,6 +1621,9 @@ function setupSettingsEventListeners() {
 
     // Apply changes
     updateBackgroundGradient();
+
+    // Save settings immediately after reset
+    saveCurrentSettings();
   });
 
   // Add scroll wheel support for all sliders

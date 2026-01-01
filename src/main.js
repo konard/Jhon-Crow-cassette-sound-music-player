@@ -5,6 +5,68 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage } = require
 const path = require('path');
 const fs = require('fs');
 
+// Settings file path in user data directory
+const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
+
+// Default settings
+const DEFAULT_SETTINGS = {
+  audio: {
+    volume: 0.7,
+    tapeHissLevel: 0.3,
+    wowFlutterLevel: 0.5,
+    saturationLevel: 0.4,
+    lowCutoff: 80,
+    highCutoff: 12000,
+    effectsEnabled: true
+  },
+  appearance: {
+    gradientEnabled: false,
+    gradientStartColor: '#1a1a2e',
+    gradientEndColor: '#2a2a4e',
+    gradientAngle: 180,
+    backgroundOpacity: 80
+  },
+  window: {
+    alwaysOnTop: false
+  },
+  playback: {
+    folderPath: null,
+    currentTrackIndex: 0
+  }
+};
+
+// Load settings from file
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+      const loaded = JSON.parse(data);
+      // Merge with defaults to handle missing keys from older versions
+      return {
+        audio: { ...DEFAULT_SETTINGS.audio, ...loaded.audio },
+        appearance: { ...DEFAULT_SETTINGS.appearance, ...loaded.appearance },
+        window: { ...DEFAULT_SETTINGS.window, ...loaded.window },
+        playback: { ...DEFAULT_SETTINGS.playback, ...loaded.playback }
+      };
+    }
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
+  return { ...DEFAULT_SETTINGS };
+}
+
+// Save settings to file
+function saveSettings(settings) {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+  } catch (error) {
+    console.error('Error saving settings:', error);
+  }
+}
+
+// Current settings (loaded on app start)
+let currentSettings = null;
+
 // Keep a global reference of the window object
 let mainWindow = null;
 let tray = null;
@@ -106,8 +168,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 500,
     height: 400,
-    minWidth: 400,
-    minHeight: 320,
+    minWidth: 70,
+    minHeight: 70,
     frame: false,
     transparent: true,
     resizable: true,
@@ -138,14 +200,24 @@ function createWindow() {
     mainWindow.hide();
   });
 
+  // Lock aspect ratio to 5:4 (same as initial window size 500x400)
+  mainWindow.setAspectRatio(5 / 4);
+
   // Remove default menu for cleaner look
   Menu.setApplicationMenu(null);
 }
 
 // Create window when Electron is ready
 app.whenReady().then(() => {
+  // Load settings before creating window
+  currentSettings = loadSettings();
   createWindow();
   createTray();
+
+  // Apply saved always-on-top setting
+  if (currentSettings.window.alwaysOnTop && mainWindow) {
+    mainWindow.setAlwaysOnTop(true);
+  }
 });
 
 // Quit when all windows are closed
@@ -212,22 +284,42 @@ ipcMain.handle('open-file-dialog', async () => {
   };
 });
 
-// Get audio files from a folder
+// Get audio files from a folder (recursively scans subfolders)
 function getAudioFilesFromFolder(folderPath) {
   try {
-    const files = fs.readdirSync(folderPath);
-    return files
-      .filter(file => isAudioFile(file))
-      .map(file => ({
-        name: getFileDisplayName(file),
-        fullName: file,
-        path: path.join(folderPath, file)
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return getAudioFilesRecursive(folderPath).sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
     console.error('Error reading folder:', error);
     return [];
   }
+}
+
+// Recursively get audio files from folder and all subfolders
+function getAudioFilesRecursive(folderPath) {
+  let audioFiles = [];
+
+  try {
+    const entries = fs.readdirSync(folderPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(folderPath, entry.name);
+
+      if (entry.isDirectory()) {
+        // Recursively scan subdirectory
+        audioFiles = audioFiles.concat(getAudioFilesRecursive(fullPath));
+      } else if (entry.isFile() && isAudioFile(entry.name)) {
+        audioFiles.push({
+          name: getFileDisplayName(entry.name),
+          fullName: entry.name,
+          path: fullPath
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error reading folder:', folderPath, error);
+  }
+
+  return audioFiles;
 }
 
 // Check if file is an audio file
@@ -280,13 +372,7 @@ ipcMain.on('window-move', (event, deltaX, deltaY) => {
   }
 });
 
-// Always on top handlers
-ipcMain.on('set-always-on-top', (event, value) => {
-  if (mainWindow) {
-    mainWindow.setAlwaysOnTop(value);
-  }
-});
-
+// Always on top handler - get current state
 ipcMain.handle('get-always-on-top', () => {
   if (mainWindow) {
     return mainWindow.isAlwaysOnTop();
@@ -305,5 +391,49 @@ ipcMain.on('show-window', () => {
   if (mainWindow) {
     mainWindow.show();
     mainWindow.focus();
+  }
+});
+
+// Settings handlers
+ipcMain.handle('get-settings', () => {
+  return currentSettings;
+});
+
+ipcMain.on('save-settings', (event, settings) => {
+  currentSettings = settings;
+  saveSettings(settings);
+});
+
+// Update always-on-top setting and save
+ipcMain.on('set-always-on-top', (event, value) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setAlwaysOnTop(value);
+  }
+  // Also save to settings (ensure window property exists)
+  if (currentSettings) {
+    if (!currentSettings.window) {
+      currentSettings.window = { ...DEFAULT_SETTINGS.window };
+    }
+    currentSettings.window.alwaysOnTop = value;
+    saveSettings(currentSettings);
+  }
+});
+
+// Get audio files from a specific folder path (for restoring playback state)
+ipcMain.handle('get-audio-files-from-path', async (event, folderPath) => {
+  try {
+    // Check if the folder still exists
+    if (!fs.existsSync(folderPath)) {
+      return null;
+    }
+
+    const audioFiles = getAudioFilesFromFolder(folderPath);
+    return {
+      folderPath,
+      audioFiles
+    };
+  } catch (error) {
+    console.error('Error getting audio files from path:', error);
+    return null;
   }
 });

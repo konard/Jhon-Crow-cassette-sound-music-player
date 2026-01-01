@@ -22,6 +22,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAlwaysOnTop: (value) => ipcRenderer.send('set-always-on-top', value),
   getAlwaysOnTop: () => ipcRenderer.invoke('get-always-on-top'),
 
+  // Settings persistence
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings) => ipcRenderer.send('save-settings', settings),
+
+  // Get audio files from a specific path (for restoring playback state)
+  getAudioFilesFromPath: (folderPath) => ipcRenderer.invoke('get-audio-files-from-path', folderPath),
+
   // Tray integration
   updatePlayState: (isPlaying) => ipcRenderer.send('update-play-state', isPlaying),
   onTrayTogglePlay: (callback) => ipcRenderer.on('tray-toggle-play', callback),
