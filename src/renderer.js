@@ -1170,6 +1170,13 @@ function syncSettingsUI() {
 
   document.getElementById('slider-highcut').value = CONFIG.audio.highCutoff;
   document.getElementById('highcut-value').textContent = CONFIG.audio.highCutoff + ' Hz';
+
+  // Sync always-on-top checkbox
+  if (window.electronAPI && window.electronAPI.getAlwaysOnTop) {
+    window.electronAPI.getAlwaysOnTop().then(value => {
+      document.getElementById('checkbox-always-on-top').checked = value;
+    });
+  }
 }
 
 function setupSettingsEventListeners() {
@@ -1292,6 +1299,13 @@ function setupSettingsEventListeners() {
   document.getElementById('btn-open-files').addEventListener('click', async () => {
     await openFiles();
     closeSettings();
+  });
+
+  // Always on top checkbox
+  document.getElementById('checkbox-always-on-top').addEventListener('change', (e) => {
+    if (window.electronAPI && window.electronAPI.setAlwaysOnTop) {
+      window.electronAPI.setAlwaysOnTop(e.target.checked);
+    }
   });
 
   // Add scroll wheel support for all sliders
