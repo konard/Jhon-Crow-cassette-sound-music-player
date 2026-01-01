@@ -844,6 +844,9 @@ function setupEventListeners() {
   // Mouse click for button interaction
   canvas.addEventListener('click', onCanvasClick);
 
+  // Right-click to open settings panel
+  canvas.addEventListener('contextmenu', onContextMenu);
+
   // Double-click to open folder
   canvas.addEventListener('dblclick', async () => {
     await openFolder();
@@ -862,6 +865,14 @@ function setupEventListeners() {
   });
 
   canvas.addEventListener('drop', onFileDrop);
+
+  // Setup settings panel event listeners
+  setupSettingsEventListeners();
+}
+
+function onContextMenu(event) {
+  event.preventDefault();
+  openSettings();
 }
 
 function onCanvasClick(event) {
@@ -945,6 +956,11 @@ async function onKeyDown(event) {
         await openFolder();
       }
       break;
+    case 'Escape':
+      if (settingsOpen) {
+        closeSettings();
+      }
+      break;
   }
 }
 
@@ -989,6 +1005,176 @@ function animate() {
   }
 
   renderer.render(scene, camera);
+}
+
+// ============================================================================
+// SETTINGS PANEL
+// ============================================================================
+let settingsOpen = false;
+
+function openSettings() {
+  const overlay = document.getElementById('settings-overlay');
+  overlay.classList.add('visible');
+  settingsOpen = true;
+  syncSettingsUI();
+}
+
+function closeSettings() {
+  const overlay = document.getElementById('settings-overlay');
+  overlay.classList.remove('visible');
+  settingsOpen = false;
+}
+
+function toggleSettings() {
+  if (settingsOpen) {
+    closeSettings();
+  } else {
+    openSettings();
+  }
+}
+
+function syncSettingsUI() {
+  // Sync slider values with current CONFIG
+  document.getElementById('slider-volume').value = CONFIG.audio.volume * 100;
+  document.getElementById('volume-value').textContent = Math.round(CONFIG.audio.volume * 100) + '%';
+
+  document.getElementById('slider-hiss').value = CONFIG.audio.tapeHissLevel * 100;
+  document.getElementById('hiss-value').textContent = Math.round(CONFIG.audio.tapeHissLevel * 100) + '%';
+
+  document.getElementById('slider-flutter').value = CONFIG.audio.wowFlutterLevel * 100;
+  document.getElementById('flutter-value').textContent = Math.round(CONFIG.audio.wowFlutterLevel * 100) + '%';
+
+  document.getElementById('slider-saturation').value = CONFIG.audio.saturationLevel * 100;
+  document.getElementById('saturation-value').textContent = Math.round(CONFIG.audio.saturationLevel * 100) + '%';
+
+  document.getElementById('slider-lowcut').value = CONFIG.audio.lowCutoff;
+  document.getElementById('lowcut-value').textContent = CONFIG.audio.lowCutoff + ' Hz';
+
+  document.getElementById('slider-highcut').value = CONFIG.audio.highCutoff;
+  document.getElementById('highcut-value').textContent = CONFIG.audio.highCutoff + ' Hz';
+}
+
+function setupSettingsEventListeners() {
+  // Close button
+  document.getElementById('settings-close').addEventListener('click', closeSettings);
+
+  // Click outside to close
+  document.getElementById('settings-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'settings-overlay') {
+      closeSettings();
+    }
+  });
+
+  // Tab switching
+  document.querySelectorAll('.settings-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Remove active from all tabs and panes
+      document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+      // Add active to clicked tab and corresponding pane
+      tab.classList.add('active');
+      const tabId = tab.getAttribute('data-tab');
+      document.getElementById('tab-' + tabId).classList.add('active');
+    });
+  });
+
+  // Volume slider
+  document.getElementById('slider-volume').addEventListener('input', (e) => {
+    const value = e.target.value / 100;
+    CONFIG.audio.volume = value;
+    document.getElementById('volume-value').textContent = e.target.value + '%';
+    if (audioState.effectNodes) {
+      audioState.effectNodes.mainGain.gain.value = value;
+    }
+  });
+
+  // Tape Hiss slider
+  document.getElementById('slider-hiss').addEventListener('input', (e) => {
+    const value = e.target.value / 100;
+    CONFIG.audio.tapeHissLevel = value;
+    document.getElementById('hiss-value').textContent = e.target.value + '%';
+    if (audioState.effectNodes) {
+      audioState.effectNodes.noiseGain.gain.value = 0.015 * value;
+    }
+  });
+
+  // Wow & Flutter slider
+  document.getElementById('slider-flutter').addEventListener('input', (e) => {
+    const value = e.target.value / 100;
+    CONFIG.audio.wowFlutterLevel = value;
+    document.getElementById('flutter-value').textContent = e.target.value + '%';
+    if (audioState.effectNodes) {
+      audioState.effectNodes.wowLFOGain.gain.value = 0.001 * value;
+      audioState.effectNodes.flutterLFOGain.gain.value = 0.0005 * value;
+    }
+  });
+
+  // Saturation slider
+  document.getElementById('slider-saturation').addEventListener('input', (e) => {
+    const value = e.target.value / 100;
+    CONFIG.audio.saturationLevel = value;
+    document.getElementById('saturation-value').textContent = e.target.value + '%';
+    if (audioState.effectNodes) {
+      audioState.effectNodes.saturation.curve = createSaturationCurve(value);
+    }
+  });
+
+  // Low Cut slider
+  document.getElementById('slider-lowcut').addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    CONFIG.audio.lowCutoff = value;
+    document.getElementById('lowcut-value').textContent = value + ' Hz';
+    if (audioState.effectNodes) {
+      audioState.effectNodes.highpass.frequency.value = value;
+    }
+  });
+
+  // High Cut slider
+  document.getElementById('slider-highcut').addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    CONFIG.audio.highCutoff = value;
+    document.getElementById('highcut-value').textContent = value + ' Hz';
+    if (audioState.effectNodes) {
+      audioState.effectNodes.lowpass.frequency.value = value;
+    }
+  });
+
+  // Reset effects button
+  document.getElementById('btn-reset-effects').addEventListener('click', () => {
+    // Reset to default values
+    CONFIG.audio.tapeHissLevel = 0.3;
+    CONFIG.audio.wowFlutterLevel = 0.5;
+    CONFIG.audio.saturationLevel = 0.4;
+
+    // Update sliders
+    document.getElementById('slider-hiss').value = 30;
+    document.getElementById('hiss-value').textContent = '30%';
+    document.getElementById('slider-flutter').value = 50;
+    document.getElementById('flutter-value').textContent = '50%';
+    document.getElementById('slider-saturation').value = 40;
+    document.getElementById('saturation-value').textContent = '40%';
+
+    // Apply to audio nodes
+    if (audioState.effectNodes) {
+      audioState.effectNodes.noiseGain.gain.value = 0.015 * 0.3;
+      audioState.effectNodes.wowLFOGain.gain.value = 0.001 * 0.5;
+      audioState.effectNodes.flutterLFOGain.gain.value = 0.0005 * 0.5;
+      audioState.effectNodes.saturation.curve = createSaturationCurve(0.4);
+    }
+  });
+
+  // Open folder button
+  document.getElementById('btn-open-folder').addEventListener('click', async () => {
+    await openFolder();
+    closeSettings();
+  });
+
+  // Open files button
+  document.getElementById('btn-open-files').addEventListener('click', async () => {
+    await openFiles();
+    closeSettings();
+  });
 }
 
 // ============================================================================

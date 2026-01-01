@@ -151,6 +151,231 @@
     #loading.hidden {
       display: none;
     }
+
+    /* Settings Panel Overlay */
+    #settings-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 500;
+    }
+
+    #settings-overlay.visible {
+      display: flex;
+    }
+
+    /* Settings Panel */
+    #settings-panel {
+      background: linear-gradient(180deg, #2a2a3e 0%, #1a1a2e 100%);
+      border: 1px solid #4a4a6a;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 360px;
+      max-height: 85%;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Settings Header */
+    .settings-header {
+      background: linear-gradient(180deg, #3a3a5a 0%, #2a2a4a 100%);
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #4a4a6a;
+    }
+
+    .settings-header h2 {
+      color: #7cfc7c;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 1px;
+      margin: 0;
+    }
+
+    .settings-close {
+      background: none;
+      border: none;
+      color: #ff5f56;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      transition: opacity 0.2s;
+    }
+
+    .settings-close:hover {
+      opacity: 0.7;
+    }
+
+    /* Tabs */
+    .settings-tabs {
+      display: flex;
+      background: #1a1a2e;
+      border-bottom: 1px solid #3a3a5a;
+    }
+
+    .settings-tab {
+      flex: 1;
+      padding: 10px 8px;
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-bottom: 2px solid transparent;
+    }
+
+    .settings-tab:hover {
+      color: rgba(255, 255, 255, 0.8);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .settings-tab.active {
+      color: #7cfc7c;
+      border-bottom-color: #7cfc7c;
+      background: rgba(124, 252, 124, 0.05);
+    }
+
+    /* Tab Content */
+    .settings-content {
+      padding: 14px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .settings-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .settings-content::-webkit-scrollbar-track {
+      background: #1a1a2e;
+    }
+
+    .settings-content::-webkit-scrollbar-thumb {
+      background: #4a4a6a;
+      border-radius: 3px;
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* Control Groups */
+    .control-group {
+      margin-bottom: 14px;
+    }
+
+    .control-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .control-label span {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 11px;
+    }
+
+    .control-value {
+      color: #7cfc7c;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    /* Range Sliders */
+    .control-slider {
+      width: 100%;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: #1a1a2e;
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .control-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      background: linear-gradient(180deg, #7cfc7c 0%, #4ccc4c 100%);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .control-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+    }
+
+    /* Section Titles */
+    .section-title {
+      color: #c41e3a;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #3a3a5a;
+    }
+
+    /* Info Text */
+    .info-text {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 10px;
+      line-height: 1.5;
+      margin-top: 8px;
+    }
+
+    /* Buttons in Settings */
+    .settings-button {
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(180deg, #3a3a5a 0%, #2a2a4a 100%);
+      border: 1px solid #4a4a6a;
+      border-radius: 4px;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 8px;
+    }
+
+    .settings-button:hover {
+      background: linear-gradient(180deg, #4a4a6a 0%, #3a3a5a 100%);
+      color: #fff;
+    }
+
+    .settings-button.primary {
+      background: linear-gradient(180deg, #4ccc4c 0%, #3a9a3a 100%);
+      border-color: #5edc5e;
+      color: #1a1a2e;
+      font-weight: 500;
+    }
+
+    .settings-button.primary:hover {
+      background: linear-gradient(180deg, #5edc5e 0%, #4ccc4c 100%);
+    }
   </style>
 </head>
 <body>
@@ -165,9 +390,111 @@
       <canvas id="three-canvas"></canvas>
     </div>
     <div id="track-overlay">No Track</div>
-    <div id="controls-hint">Click buttons on player | Double-click to open folder | Scroll to zoom</div>
+    <div id="controls-hint">Click buttons on player | Double-click to open folder | Right-click for settings | Scroll to zoom</div>
     <div id="status-bar">Drop files or double-click to load music</div>
     <div id="loading">Loading...</div>
+
+    <!-- Settings Panel (opened by right-click) -->
+    <div id="settings-overlay">
+      <div id="settings-panel">
+        <div class="settings-header">
+          <h2>SETTINGS</h2>
+          <button class="settings-close" id="settings-close" title="Close">&times;</button>
+        </div>
+        <div class="settings-tabs">
+          <button class="settings-tab active" data-tab="playback">Playback</button>
+          <button class="settings-tab" data-tab="effects">Tape Effects</button>
+          <button class="settings-tab" data-tab="equalizer">Equalizer</button>
+          <button class="settings-tab" data-tab="about">About</button>
+        </div>
+        <div class="settings-content">
+          <!-- Playback Tab -->
+          <div class="tab-pane active" id="tab-playback">
+            <div class="section-title">Volume Control</div>
+            <div class="control-group">
+              <div class="control-label">
+                <span>Master Volume</span>
+                <span class="control-value" id="volume-value">70%</span>
+              </div>
+              <input type="range" class="control-slider" id="slider-volume" min="0" max="100" value="70">
+            </div>
+
+            <div class="section-title">Playback Options</div>
+            <div class="control-group">
+              <button class="settings-button" id="btn-open-folder">Open Folder...</button>
+              <button class="settings-button" id="btn-open-files">Open Files...</button>
+            </div>
+            <p class="info-text">Double-click the player or drag & drop files to load music.</p>
+          </div>
+
+          <!-- Tape Effects Tab -->
+          <div class="tab-pane" id="tab-effects">
+            <div class="section-title">Cassette Sound Effects</div>
+            <div class="control-group">
+              <div class="control-label">
+                <span>Tape Hiss</span>
+                <span class="control-value" id="hiss-value">30%</span>
+              </div>
+              <input type="range" class="control-slider" id="slider-hiss" min="0" max="100" value="30">
+            </div>
+            <div class="control-group">
+              <div class="control-label">
+                <span>Wow & Flutter</span>
+                <span class="control-value" id="flutter-value">50%</span>
+              </div>
+              <input type="range" class="control-slider" id="slider-flutter" min="0" max="100" value="50">
+            </div>
+            <div class="control-group">
+              <div class="control-label">
+                <span>Tape Saturation</span>
+                <span class="control-value" id="saturation-value">40%</span>
+              </div>
+              <input type="range" class="control-slider" id="slider-saturation" min="0" max="100" value="40">
+            </div>
+            <button class="settings-button" id="btn-reset-effects">Reset to Defaults</button>
+            <p class="info-text">These effects simulate the authentic sound of a cassette tape player.</p>
+          </div>
+
+          <!-- Equalizer Tab -->
+          <div class="tab-pane" id="tab-equalizer">
+            <div class="section-title">Frequency Filters</div>
+            <div class="control-group">
+              <div class="control-label">
+                <span>Low Cut (Bass)</span>
+                <span class="control-value" id="lowcut-value">80 Hz</span>
+              </div>
+              <input type="range" class="control-slider" id="slider-lowcut" min="20" max="200" value="80">
+            </div>
+            <div class="control-group">
+              <div class="control-label">
+                <span>High Cut (Treble)</span>
+                <span class="control-value" id="highcut-value">12000 Hz</span>
+              </div>
+              <input type="range" class="control-slider" id="slider-highcut" min="5000" max="20000" value="12000">
+            </div>
+            <p class="info-text">Adjust frequency response to simulate different tape qualities. Lower high-cut for worn tapes.</p>
+          </div>
+
+          <!-- About Tab -->
+          <div class="tab-pane" id="tab-about">
+            <div class="section-title">Cassette Music Player</div>
+            <p class="info-text">
+              A nostalgic music player inspired by the Sony Walkman WM-10.<br><br>
+              <strong>Controls:</strong><br>
+              - Click buttons on player to control playback<br>
+              - Double-click to open folder<br>
+              - Scroll wheel to zoom in/out<br>
+              - Right-click to open settings<br>
+              - Arrow keys: Up/Down for volume, Left/Right for tracks<br>
+              - Space: Play/Pause<br>
+              - Ctrl+O: Open folder
+            </p>
+            <div class="section-title">Version</div>
+            <p class="info-text">v1.0.0</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <script src="./lib/three.min.js"></script>
   <script src="./renderer.js"></script>
