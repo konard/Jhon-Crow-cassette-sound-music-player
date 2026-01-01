@@ -267,20 +267,29 @@ function onWindowResize() {
   updateBottomCaptionsVisibility();
 }
 
-// Show/hide bottom captions based on window size
+// Show/hide UI elements based on window size
 function updateBottomCaptionsVisibility() {
   const controlsHint = document.getElementById('controls-hint');
   const statusBar = document.getElementById('status-bar');
+  const windowControls = document.getElementById('window-controls');
 
   // Hide captions when window height is less than 200px
-  const threshold = 200;
-  const isSmall = window.innerHeight < threshold;
+  const captionThreshold = 200;
+  const isSmallHeight = window.innerHeight < captionThreshold;
 
   if (controlsHint) {
-    controlsHint.style.display = isSmall ? 'none' : 'block';
+    controlsHint.style.display = isSmallHeight ? 'none' : 'block';
   }
   if (statusBar) {
-    statusBar.style.display = isSmall ? 'none' : 'block';
+    statusBar.style.display = isSmallHeight ? 'none' : 'block';
+  }
+
+  // Hide window controls when window is very small (height or width < 120px)
+  const controlsThreshold = 120;
+  const isVerySmall = window.innerHeight < controlsThreshold || window.innerWidth < controlsThreshold;
+
+  if (windowControls) {
+    windowControls.style.display = isVerySmall ? 'none' : 'flex';
   }
 }
 

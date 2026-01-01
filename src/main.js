@@ -406,11 +406,14 @@ ipcMain.on('save-settings', (event, settings) => {
 
 // Update always-on-top setting and save
 ipcMain.on('set-always-on-top', (event, value) => {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setAlwaysOnTop(value);
   }
-  // Also save to settings
+  // Also save to settings (ensure window property exists)
   if (currentSettings) {
+    if (!currentSettings.window) {
+      currentSettings.window = { ...DEFAULT_SETTINGS.window };
+    }
     currentSettings.window.alwaysOnTop = value;
     saveSettings(currentSettings);
   }
