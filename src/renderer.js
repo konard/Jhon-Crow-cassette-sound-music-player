@@ -32,6 +32,13 @@ const CONFIG = {
     lowCutoff: 80,
     highCutoff: 12000,
     volume: 0.7
+  },
+  appearance: {
+    gradientEnabled: false,
+    gradientStartColor: '#1a1a2e',
+    gradientEndColor: '#2a2a4e',
+    gradientAngle: 180,
+    backgroundOpacity: 80
   }
 };
 
@@ -57,6 +64,10 @@ let audioState = {
 
 // Animation state
 let reelRotation = 0;
+
+// Drag state for window movement via cassette
+let isDragging = false;
+let dragStartMouse = { x: 0, y: 0 };
 
 // UI references
 let screenCanvas, screenCtx, screenTexture;
@@ -722,6 +733,11 @@ async function play() {
   await audioState.audioElement.play();
   audioState.isPlaying = true;
 
+  // Resume tape hiss noise
+  if (audioState.effectNodes && audioState.effectNodes.noiseGain) {
+    audioState.effectNodes.noiseGain.gain.value = 0.015 * CONFIG.audio.tapeHissLevel;
+  }
+
   // Update tray icon
   if (window.electronAPI && window.electronAPI.updatePlayState) {
     window.electronAPI.updatePlayState(true);
@@ -735,6 +751,11 @@ function stop() {
   }
   audioState.isPlaying = false;
 
+  // Stop tape hiss noise
+  if (audioState.effectNodes && audioState.effectNodes.noiseGain) {
+    audioState.effectNodes.noiseGain.gain.value = 0;
+  }
+
   // Update tray icon
   if (window.electronAPI && window.electronAPI.updatePlayState) {
     window.electronAPI.updatePlayState(false);
@@ -746,6 +767,11 @@ function pause() {
     audioState.audioElement.pause();
   }
   audioState.isPlaying = false;
+
+  // Stop tape hiss noise
+  if (audioState.effectNodes && audioState.effectNodes.noiseGain) {
+    audioState.effectNodes.noiseGain.gain.value = 0;
+  }
 
   // Update tray icon
   if (window.electronAPI && window.electronAPI.updatePlayState) {
@@ -839,6 +865,30 @@ function updateStatusBar(text) {
   document.getElementById('status-bar').textContent = text;
 }
 
+// Update background gradient based on current appearance settings
+function updateBackgroundGradient() {
+  const gradientEl = document.getElementById('background-gradient');
+  if (!gradientEl) return;
+
+  if (CONFIG.appearance.gradientEnabled) {
+    // Convert hex color to rgba with opacity
+    const startColor = hexToRgba(CONFIG.appearance.gradientStartColor, CONFIG.appearance.backgroundOpacity / 100);
+    const endColor = hexToRgba(CONFIG.appearance.gradientEndColor, CONFIG.appearance.backgroundOpacity / 100);
+
+    gradientEl.style.background = `linear-gradient(${CONFIG.appearance.gradientAngle}deg, ${startColor}, ${endColor})`;
+  } else {
+    gradientEl.style.background = 'transparent';
+  }
+}
+
+// Convert hex color to rgba string
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // ============================================================================
 // EVENT HANDLERS
 // ============================================================================
@@ -866,6 +916,11 @@ function setupEventListeners() {
   canvas.addEventListener('dblclick', async () => {
     await openFolder();
   });
+
+  // Mouse drag for window movement via cassette
+  canvas.addEventListener('mousedown', onCanvasMouseDown);
+  document.addEventListener('mousemove', onCanvasMouseMove);
+  document.addEventListener('mouseup', onCanvasMouseUp);
 
   // Mouse wheel for zoom
   canvas.addEventListener('wheel', onMouseWheel);
@@ -895,6 +950,78 @@ function setupEventListeners() {
 function onContextMenu(event) {
   event.preventDefault();
   openSettings();
+}
+
+// Check if click is on a button
+function isClickOnButton(event) {
+  const canvas = document.getElementById('three-canvas');
+  const rect = canvas.getBoundingClientRect();
+
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const buttonsGroup = cassettePlayer.userData.buttonsGroup;
+  if (buttonsGroup) {
+    const buttonMeshes = buttonsGroup.children.filter(c => c.userData.isButton);
+    const intersects = raycaster.intersectObjects(buttonMeshes);
+    return intersects.length > 0;
+  }
+  return false;
+}
+
+// Check if click is on the cassette body
+function isClickOnCassette(event) {
+  const canvas = document.getElementById('three-canvas');
+  const rect = canvas.getBoundingClientRect();
+
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  // Check intersection with all cassette player meshes
+  const intersects = raycaster.intersectObjects(cassettePlayer.children, true);
+  return intersects.length > 0;
+}
+
+function onCanvasMouseDown(event) {
+  // Only start drag on left mouse button
+  if (event.button !== 0) return;
+
+  // Don't drag if clicking on buttons
+  if (isClickOnButton(event)) return;
+
+  // Only drag if clicking on the cassette
+  if (!isClickOnCassette(event)) return;
+
+  isDragging = true;
+  dragStartMouse = { x: event.screenX, y: event.screenY };
+
+  // Signal main process to prepare for dragging
+  if (window.electronAPI && window.electronAPI.startWindowDrag) {
+    window.electronAPI.startWindowDrag();
+  }
+}
+
+function onCanvasMouseMove(event) {
+  if (!isDragging) return;
+
+  const deltaX = event.screenX - dragStartMouse.x;
+  const deltaY = event.screenY - dragStartMouse.y;
+
+  // Update start position for next move calculation
+  dragStartMouse = { x: event.screenX, y: event.screenY };
+
+  // Move the window
+  if (window.electronAPI && window.electronAPI.moveWindow) {
+    window.electronAPI.moveWindow(deltaX, deltaY);
+  }
+}
+
+function onCanvasMouseUp(event) {
+  isDragging = false;
 }
 
 function onCanvasClick(event) {
@@ -1074,6 +1201,22 @@ function syncSettingsUI() {
 
   document.getElementById('slider-highcut').value = CONFIG.audio.highCutoff;
   document.getElementById('highcut-value').textContent = CONFIG.audio.highCutoff + ' Hz';
+
+  // Sync always-on-top checkbox
+  if (window.electronAPI && window.electronAPI.getAlwaysOnTop) {
+    window.electronAPI.getAlwaysOnTop().then(value => {
+      document.getElementById('checkbox-always-on-top').checked = value;
+    });
+  }
+
+  // Sync appearance settings
+  document.getElementById('checkbox-gradient-enabled').checked = CONFIG.appearance.gradientEnabled;
+  document.getElementById('color-gradient-start').value = CONFIG.appearance.gradientStartColor;
+  document.getElementById('color-gradient-end').value = CONFIG.appearance.gradientEndColor;
+  document.getElementById('slider-gradient-angle').value = CONFIG.appearance.gradientAngle;
+  document.getElementById('angle-value').textContent = CONFIG.appearance.gradientAngle + '°';
+  document.getElementById('slider-bg-opacity').value = CONFIG.appearance.backgroundOpacity;
+  document.getElementById('opacity-value').textContent = CONFIG.appearance.backgroundOpacity + '%';
 }
 
 function setupSettingsEventListeners() {
@@ -1196,6 +1339,102 @@ function setupSettingsEventListeners() {
   document.getElementById('btn-open-files').addEventListener('click', async () => {
     await openFiles();
     closeSettings();
+  });
+
+  // Always on top checkbox
+  document.getElementById('checkbox-always-on-top').addEventListener('change', (e) => {
+    if (window.electronAPI && window.electronAPI.setAlwaysOnTop) {
+      window.electronAPI.setAlwaysOnTop(e.target.checked);
+    }
+  });
+
+  // Appearance settings - Gradient enabled checkbox
+  document.getElementById('checkbox-gradient-enabled').addEventListener('change', (e) => {
+    CONFIG.appearance.gradientEnabled = e.target.checked;
+    updateBackgroundGradient();
+  });
+
+  // Gradient start color
+  document.getElementById('color-gradient-start').addEventListener('input', (e) => {
+    CONFIG.appearance.gradientStartColor = e.target.value;
+    updateBackgroundGradient();
+  });
+
+  // Gradient end color
+  document.getElementById('color-gradient-end').addEventListener('input', (e) => {
+    CONFIG.appearance.gradientEndColor = e.target.value;
+    updateBackgroundGradient();
+  });
+
+  // Gradient angle slider
+  document.getElementById('slider-gradient-angle').addEventListener('input', (e) => {
+    CONFIG.appearance.gradientAngle = parseInt(e.target.value);
+    document.getElementById('angle-value').textContent = e.target.value + '°';
+    updateBackgroundGradient();
+  });
+
+  // Background opacity slider
+  document.getElementById('slider-bg-opacity').addEventListener('input', (e) => {
+    CONFIG.appearance.backgroundOpacity = parseInt(e.target.value);
+    document.getElementById('opacity-value').textContent = e.target.value + '%';
+    updateBackgroundGradient();
+  });
+
+  // Reset appearance button
+  document.getElementById('btn-reset-appearance').addEventListener('click', () => {
+    // Reset to default values
+    CONFIG.appearance.gradientEnabled = false;
+    CONFIG.appearance.gradientStartColor = '#1a1a2e';
+    CONFIG.appearance.gradientEndColor = '#2a2a4e';
+    CONFIG.appearance.gradientAngle = 180;
+    CONFIG.appearance.backgroundOpacity = 80;
+
+    // Update UI
+    document.getElementById('checkbox-gradient-enabled').checked = false;
+    document.getElementById('color-gradient-start').value = '#1a1a2e';
+    document.getElementById('color-gradient-end').value = '#2a2a4e';
+    document.getElementById('slider-gradient-angle').value = 180;
+    document.getElementById('angle-value').textContent = '180°';
+    document.getElementById('slider-bg-opacity').value = 80;
+    document.getElementById('opacity-value').textContent = '80%';
+
+    // Apply changes
+    updateBackgroundGradient();
+  });
+
+  // Add scroll wheel support for all sliders
+  setupSliderScrollSupport();
+}
+
+// Add scroll wheel support for sliders
+function setupSliderScrollSupport() {
+  const sliders = document.querySelectorAll('.control-slider');
+
+  sliders.forEach(slider => {
+    slider.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const min = parseFloat(slider.min);
+      const max = parseFloat(slider.max);
+      const currentValue = parseFloat(slider.value);
+
+      // Calculate step based on slider range (1% of range for smoother control)
+      const step = (max - min) / 100;
+
+      // Scroll up increases value, scroll down decreases
+      const direction = e.deltaY > 0 ? -1 : 1;
+      let newValue = currentValue + (direction * step * 5); // 5 steps per scroll
+
+      // Clamp value within range
+      newValue = Math.max(min, Math.min(max, newValue));
+
+      // Update slider value
+      slider.value = newValue;
+
+      // Trigger input event to update the associated setting
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+    }, { passive: false });
   });
 }
 

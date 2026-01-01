@@ -262,9 +262,36 @@ ipcMain.on('window-close', () => {
   if (mainWindow) mainWindow.close();
 });
 
-// Drag window
+// Drag window by cassette - track start position
+let dragStartPosition = null;
+
 ipcMain.on('window-start-drag', () => {
-  // Window dragging is handled in renderer via -webkit-app-region: drag
+  if (mainWindow) {
+    const [x, y] = mainWindow.getPosition();
+    dragStartPosition = { x, y };
+  }
+});
+
+// Move window by delta from mouse movement
+ipcMain.on('window-move', (event, deltaX, deltaY) => {
+  if (mainWindow && dragStartPosition) {
+    const [currentX, currentY] = mainWindow.getPosition();
+    mainWindow.setPosition(currentX + deltaX, currentY + deltaY);
+  }
+});
+
+// Always on top handlers
+ipcMain.on('set-always-on-top', (event, value) => {
+  if (mainWindow) {
+    mainWindow.setAlwaysOnTop(value);
+  }
+});
+
+ipcMain.handle('get-always-on-top', () => {
+  if (mainWindow) {
+    return mainWindow.isAlwaysOnTop();
+  }
+  return false;
 });
 
 // Update play state from renderer and update tray icon

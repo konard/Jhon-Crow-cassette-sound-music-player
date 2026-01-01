@@ -14,6 +14,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximizeWindow: () => ipcRenderer.send('window-maximize'),
   closeWindow: () => ipcRenderer.send('window-close'),
 
+  // Window dragging
+  startWindowDrag: () => ipcRenderer.send('window-start-drag'),
+  moveWindow: (deltaX, deltaY) => ipcRenderer.send('window-move', deltaX, deltaY),
+
+  // Always on top
+  setAlwaysOnTop: (value) => ipcRenderer.send('set-always-on-top', value),
+  getAlwaysOnTop: () => ipcRenderer.invoke('get-always-on-top'),
+
   // Tray integration
   updatePlayState: (isPlaying) => ipcRenderer.send('update-play-state', isPlaying),
   onTrayTogglePlay: (callback) => ipcRenderer.on('tray-toggle-play', callback),
