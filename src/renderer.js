@@ -701,7 +701,7 @@ async function loadTrack(index) {
 
   // Update screen
   updateScreenText(track.name);
-  showTrackOverlay(track.name);
+  // Note: showTrackOverlay is called when track starts playing, not on load
 
   // Update status bar
   updateStatusBar(`${index + 1}/${audioState.audioFiles.length}: ${track.name}`);
@@ -732,6 +732,12 @@ async function play() {
 
   await audioState.audioElement.play();
   audioState.isPlaying = true;
+
+  // Show track overlay when track starts playing
+  const currentTrack = audioState.audioFiles[audioState.currentTrackIndex];
+  if (currentTrack) {
+    showTrackOverlay(currentTrack.name);
+  }
 
   // Resume tape hiss noise
   if (audioState.effectNodes && audioState.effectNodes.noiseGain) {
@@ -1171,6 +1177,8 @@ function openSettings() {
 function closeSettings() {
   const overlay = document.getElementById('settings-overlay');
   overlay.classList.remove('visible');
+  // Reset background dimming when closing settings
+  overlay.style.background = 'rgba(0, 0, 0, 0.7)';
   settingsOpen = false;
 }
 
@@ -1241,6 +1249,14 @@ function setupSettingsEventListeners() {
       tab.classList.add('active');
       const tabId = tab.getAttribute('data-tab');
       document.getElementById('tab-' + tabId).classList.add('active');
+
+      // Remove background dimming when on Appearance tab to see visual changes
+      const overlay = document.getElementById('settings-overlay');
+      if (tabId === 'appearance') {
+        overlay.style.background = 'transparent';
+      } else {
+        overlay.style.background = 'rgba(0, 0, 0, 0.7)';
+      }
     });
   });
 
@@ -1419,12 +1435,12 @@ function setupSliderScrollSupport() {
       const max = parseFloat(slider.max);
       const currentValue = parseFloat(slider.value);
 
-      // Calculate step based on slider range (1% of range for smoother control)
-      const step = (max - min) / 100;
+      // Use fixed step of 1 for precise control (e.g., 1%)
+      const step = 1;
 
       // Scroll up increases value, scroll down decreases
       const direction = e.deltaY > 0 ? -1 : 1;
-      let newValue = currentValue + (direction * step * 5); // 5 steps per scroll
+      let newValue = currentValue + (direction * step);
 
       // Clamp value within range
       newValue = Math.max(min, Math.min(max, newValue));
