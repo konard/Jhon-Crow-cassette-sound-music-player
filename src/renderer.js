@@ -370,14 +370,43 @@ function createCassettePlayer() {
   // Cassette window area (front face - visible from side angle)
   const windowWidth = bodyWidth * 0.75;
   const windowHeight = bodyHeight * 0.55;
+  const frameWidth = 0.004;  // Width of the frame border
+  const windowCenterX = -bodyWidth * 0.05;
+  const windowCenterY = bodyHeight * 0.58;
+  const windowZ = bodyDepth / 2 + 0.001;
 
-  // Dark cassette area background
-  const cassetteArea = new THREE.Mesh(
-    new THREE.BoxGeometry(windowWidth + 0.008, windowHeight + 0.008, 0.003),
+  // Dark cassette area as a FRAME (4 pieces) to allow seeing reels through the center
+  // Top frame piece
+  const topFrame = new THREE.Mesh(
+    new THREE.BoxGeometry(windowWidth + 0.008, frameWidth, 0.003),
     darkPanelMaterial
   );
-  cassetteArea.position.set(-bodyWidth * 0.05, bodyHeight * 0.58, bodyDepth / 2 + 0.001);
-  group.add(cassetteArea);
+  topFrame.position.set(windowCenterX, windowCenterY + windowHeight/2 + frameWidth/2, windowZ);
+  group.add(topFrame);
+
+  // Bottom frame piece
+  const bottomFrame = new THREE.Mesh(
+    new THREE.BoxGeometry(windowWidth + 0.008, frameWidth, 0.003),
+    darkPanelMaterial
+  );
+  bottomFrame.position.set(windowCenterX, windowCenterY - windowHeight/2 - frameWidth/2, windowZ);
+  group.add(bottomFrame);
+
+  // Left frame piece
+  const leftFrame = new THREE.Mesh(
+    new THREE.BoxGeometry(frameWidth, windowHeight + 0.008, 0.003),
+    darkPanelMaterial
+  );
+  leftFrame.position.set(windowCenterX - windowWidth/2 - frameWidth/2, windowCenterY, windowZ);
+  group.add(leftFrame);
+
+  // Right frame piece
+  const rightFrame = new THREE.Mesh(
+    new THREE.BoxGeometry(frameWidth, windowHeight + 0.008, 0.003),
+    darkPanelMaterial
+  );
+  rightFrame.position.set(windowCenterX + windowWidth/2 + frameWidth/2, windowCenterY, windowZ);
+  group.add(rightFrame);
 
   // Cassette window (fully transparent to show tape reels behind it)
   const cassetteWindow = new THREE.Mesh(
@@ -396,11 +425,12 @@ function createCassettePlayer() {
   // Cassette reels group
   const reelGroup = new THREE.Group();
   reelGroup.name = 'reels';
-  // Position reels inside the cassette body (negative z to be behind the window surface)
-  reelGroup.position.set(-bodyWidth * 0.05, bodyHeight * 0.58, bodyDepth / 2 - 0.003);
+  // Position reels just behind the window frame (at windowZ - 0.002)
+  // This keeps them visible through the transparent window but behind the frame
+  reelGroup.position.set(windowCenterX, windowCenterY, windowZ - 0.002);
 
-  const reelRadius = 0.018;
-  const reelSpacing = 0.028;
+  const reelRadius = 0.015;  // Slightly smaller reel for better fit
+  const reelSpacing = 0.022;  // Closer together to fit within window
   const reelGeometry = new THREE.CylinderGeometry(reelRadius, reelRadius, 0.004, 24);
   const reelMaterial = new THREE.MeshStandardMaterial({
     color: 0x2d2d3d,
@@ -419,8 +449,10 @@ function createCassettePlayer() {
   // Constants for tape ring sizing
   // Hub radius reduced by 2.5x per user feedback (was 0.006)
   const hubRadius = 0.0024;  // Inner hub radius (reduced by 2.5x)
-  // Increase max tape radius for more visible tape (was reelRadius = 0.018)
-  const maxTapeRadius = 0.024;  // Maximum outer radius of tape (increased)
+  // Max tape radius calculated to stay within window bounds
+  // Window half-width = 0.04125, reel offset = 0.022, so max radius = 0.04125 - 0.022 + 0.0055 = 0.01925
+  // Use 0.018 for safety margin
+  const maxTapeRadius = 0.018;  // Maximum outer radius of tape (constrained to window)
 
   // Left reel (take-up) - starts with minimal tape, fills during playback
   const leftReelGroup = new THREE.Group();
