@@ -1,14 +1,20 @@
 {
   "name": "cassette-music-player",
-  "version": "1.3.0",
-  "description": "A high-performance cassette-style music player for Windows with 3D visuals and authentic tape sound effects",
+  "version": "1.4.0",
+  "description": "A high-performance cassette-style music player for Windows and Android with 3D visuals and authentic tape sound effects",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder --win --publish never",
     "build:dir": "electron-builder --win --dir",
-    "build:portable": "electron-builder --win portable --publish never"
+    "build:portable": "electron-builder --win portable --publish never",
+    "cap:init": "npx cap init",
+    "cap:add:android": "npx cap add android",
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android",
+    "build:android": "npx cap sync android && cd android && ./gradlew assembleDebug",
+    "build:android:release": "npx cap sync android && cd android && ./gradlew assembleRelease"
   },
   "keywords": [
     "music",
@@ -19,16 +25,22 @@
     "retro",
     "3d",
     "audio",
-    "tape"
+    "tape",
+    "android",
+    "mobile"
   ],
   "author": "Jhon-Crow",
   "license": "Unlicense",
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "@capacitor/cli": "^6.0.0",
+    "typescript": "^5.0.0"
   },
   "dependencies": {
-    "three": "^0.160.0"
+    "three": "^0.160.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0"
   },
   "build": {
     "appId": "com.jhoncrow.cassette-music-player",
