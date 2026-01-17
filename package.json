@@ -1,6 +1,6 @@
 {
   "name": "cassette-music-player",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "A high-performance cassette-style music player for Windows and Android with 3D visuals and authentic tape sound effects",
   "main": "src/main.js",
   "scripts": {
@@ -40,7 +40,8 @@
   "dependencies": {
     "three": "^0.160.0",
     "@capacitor/core": "^6.0.0",
-    "@capacitor/android": "^6.0.0"
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/screen-orientation": "^6.0.0"
   },
   "build": {
     "appId": "com.jhoncrow.cassette-music-player",

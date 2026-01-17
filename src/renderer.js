@@ -9,11 +9,19 @@ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/
 const isElectron = !!(window.electronAPI);
 const isCapacitor = typeof window.Capacitor !== 'undefined';
 
+// Screen Orientation API (Capacitor plugin will be loaded if available)
+let ScreenOrientation = null;
+
 // Apply mobile class to body if on mobile platform
 if (isMobile || isCapacitor) {
   document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('mobile-platform');
   });
+
+  // Try to load Capacitor Screen Orientation plugin
+  if (isCapacitor && window.Capacitor.Plugins) {
+    ScreenOrientation = window.Capacitor.Plugins.ScreenOrientation;
+  }
 }
 
 // ============================================================================
@@ -55,6 +63,9 @@ const CONFIG = {
     gradientEndColor: '#2a2a4e',
     gradientAngle: 180,
     backgroundOpacity: 80
+  },
+  mobile: {
+    autoRotate: false  // Default: locked to landscape
   }
 };
 
@@ -113,6 +124,9 @@ async function init() {
 
   // Set initial visibility for bottom captions based on window size
   updateBottomCaptionsVisibility();
+
+  // Initialize mobile orientation (lock to landscape by default)
+  await initMobileOrientation();
 
   // Start animation loop
   animate();
@@ -1538,6 +1552,79 @@ function animate() {
 }
 
 // ============================================================================
+// SCREEN ORIENTATION CONTROL (Mobile)
+// ============================================================================
+
+// Lock screen to landscape orientation
+async function lockToLandscape() {
+  // Try Capacitor plugin first
+  if (ScreenOrientation && ScreenOrientation.lock) {
+    try {
+      await ScreenOrientation.lock({ orientation: 'landscape' });
+      return true;
+    } catch (e) {
+      console.log('Capacitor ScreenOrientation.lock failed:', e);
+    }
+  }
+
+  // Fallback to Web Screen Orientation API
+  if (screen.orientation && screen.orientation.lock) {
+    try {
+      await screen.orientation.lock('landscape');
+      return true;
+    } catch (e) {
+      console.log('Web screen.orientation.lock failed:', e);
+    }
+  }
+
+  return false;
+}
+
+// Unlock screen orientation (allow auto-rotate)
+async function unlockOrientation() {
+  // Try Capacitor plugin first
+  if (ScreenOrientation && ScreenOrientation.unlock) {
+    try {
+      await ScreenOrientation.unlock();
+      return true;
+    } catch (e) {
+      console.log('Capacitor ScreenOrientation.unlock failed:', e);
+    }
+  }
+
+  // Fallback to Web Screen Orientation API
+  if (screen.orientation && screen.orientation.unlock) {
+    try {
+      screen.orientation.unlock();
+      return true;
+    } catch (e) {
+      console.log('Web screen.orientation.unlock failed:', e);
+    }
+  }
+
+  return false;
+}
+
+// Apply orientation based on settings
+async function applyOrientationSetting() {
+  if (!isMobile && !isCapacitor) return;
+
+  if (CONFIG.mobile.autoRotate) {
+    await unlockOrientation();
+  } else {
+    await lockToLandscape();
+  }
+}
+
+// Initialize orientation on mobile
+async function initMobileOrientation() {
+  if (!isMobile && !isCapacitor) return;
+
+  // Apply initial orientation setting (default: locked to landscape)
+  await applyOrientationSetting();
+}
+
+// ============================================================================
 // SETTINGS PANEL
 // ============================================================================
 let settingsOpen = false;
@@ -1614,6 +1701,11 @@ function syncSettingsUI() {
   document.getElementById('angle-value').textContent = CONFIG.appearance.gradientAngle + '°';
   document.getElementById('slider-bg-opacity').value = CONFIG.appearance.backgroundOpacity;
   document.getElementById('opacity-value').textContent = CONFIG.appearance.backgroundOpacity + '%';
+
+  // Sync mobile settings (auto-rotate)
+  if (isMobile || isCapacitor) {
+    document.getElementById('checkbox-auto-rotate').checked = CONFIG.mobile.autoRotate;
+  }
 }
 
 function setupSettingsEventListeners() {
@@ -1760,6 +1852,12 @@ function setupSettingsEventListeners() {
     if (isElectron && window.electronAPI.setAlwaysOnTop) {
       window.electronAPI.setAlwaysOnTop(e.target.checked);
     }
+  });
+
+  // Auto-rotate checkbox (Mobile only)
+  document.getElementById('checkbox-auto-rotate').addEventListener('change', async (e) => {
+    CONFIG.mobile.autoRotate = e.target.checked;
+    await applyOrientationSetting();
   });
 
   // Appearance settings - Gradient enabled checkbox

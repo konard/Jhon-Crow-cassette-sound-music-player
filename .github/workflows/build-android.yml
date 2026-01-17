@@ -41,6 +41,37 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Add Android permissions for file access
+        run: |
+          # Add required permissions to AndroidManifest.xml for file/media access
+          # These permissions are required for the file picker to work on Android
+          MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
+
+          # Check if permissions already exist
+          if ! grep -q "READ_MEDIA_AUDIO" "$MANIFEST_FILE"; then
+            # Add permissions before the closing </manifest> tag
+            sed -i 's|</manifest>|    <!-- File access permissions for audio playback -->\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />\n\n</manifest>|' "$MANIFEST_FILE"
+            echo "Added file access permissions to AndroidManifest.xml"
+          else
+            echo "Permissions already exist in AndroidManifest.xml"
+          fi
+
+          # Display the manifest for verification
+          echo "=== AndroidManifest.xml ==="
+          cat "$MANIFEST_FILE"
+
+      - name: Configure screen orientation
+        run: |
+          # Set default orientation to landscape (user-requested)
+          MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
+
+          # Add screenOrientation="userLandscape" to the activity
+          # This allows landscape by default but respects user rotation settings
+          sed -i 's|android:name="com.jhoncrow.cassette.music.player.MainActivity"|android:name="com.jhoncrow.cassette.music.player.MainActivity"\n            android:screenOrientation="userLandscape"|' "$MANIFEST_FILE"
+
+          echo "=== Updated AndroidManifest.xml with orientation ==="
+          cat "$MANIFEST_FILE"
+
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 

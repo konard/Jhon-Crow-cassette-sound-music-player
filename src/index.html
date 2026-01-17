@@ -554,6 +554,11 @@
     .mobile-platform #mobile-controls-list {
       display: inline !important;
     }
+
+    /* Show orientation section on mobile */
+    .mobile-platform #mobile-orientation-section {
+      display: block !important;
+    }
   </style>
 </head>
 <body>
@@ -626,6 +631,18 @@
                 </label>
               </div>
               <p class="info-text">Keep the player window above all other windows.</p>
+            </div>
+
+            <div id="mobile-orientation-section" style="display: none;">
+              <div class="section-title">Screen Orientation</div>
+              <div class="control-group">
+                <label class="toggle-label">
+                  <input type="checkbox" id="checkbox-auto-rotate" class="toggle-checkbox">
+                  <span class="toggle-switch"></span>
+                  <span class="toggle-text">Auto-rotate</span>
+                </label>
+              </div>
+              <p class="info-text">When enabled, the app will rotate with your device. When disabled, stays in landscape mode.</p>
             </div>
           </div>
 
@@ -747,7 +764,7 @@
               </span>
             </p>
             <div class="section-title">Version</div>
-            <p class="info-text">v1.4.0</p>
+            <p class="info-text">v1.4.1</p>
           </div>
         </div>
       </div>
