@@ -12,15 +12,19 @@ const isCapacitor = typeof window.Capacitor !== 'undefined';
 // Screen Orientation API (Capacitor plugin will be loaded if available)
 let ScreenOrientation = null;
 
+// Filesystem API for permission management (Capacitor)
+let Filesystem = null;
+
 // Apply mobile class to body if on mobile platform
 if (isMobile || isCapacitor) {
   document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('mobile-platform');
   });
 
-  // Try to load Capacitor Screen Orientation plugin
+  // Try to load Capacitor plugins
   if (isCapacitor && window.Capacitor.Plugins) {
     ScreenOrientation = window.Capacitor.Plugins.ScreenOrientation;
+    Filesystem = window.Capacitor.Plugins.Filesystem;
   }
 }
 
@@ -1299,8 +1303,61 @@ async function openFiles() {
   }
 }
 
+// Request storage permissions on Android (required for file picker to work)
+// This uses the Capacitor Filesystem plugin to request read/write permissions
+async function requestStoragePermissions() {
+  if (!isCapacitor) return true; // Not on Capacitor, no permissions needed
+
+  console.log('[Mobile] Checking storage permissions...');
+
+  try {
+    // Try using Capacitor Filesystem plugin for permission management
+    if (Filesystem) {
+      // Check current permission status
+      const permStatus = await Filesystem.checkPermissions();
+      console.log('[Mobile] Current permission status:', permStatus);
+
+      if (permStatus.publicStorage === 'granted') {
+        console.log('[Mobile] Storage permissions already granted');
+        return true;
+      }
+
+      // Request permissions
+      console.log('[Mobile] Requesting storage permissions...');
+      updateStatusBar('Requesting permissions...');
+      const result = await Filesystem.requestPermissions();
+      console.log('[Mobile] Permission request result:', result);
+
+      if (result.publicStorage === 'granted') {
+        console.log('[Mobile] Storage permissions granted');
+        return true;
+      } else {
+        console.warn('[Mobile] Storage permissions denied:', result.publicStorage);
+        updateStatusBar('Permission denied - please grant storage access');
+        return false;
+      }
+    } else {
+      console.log('[Mobile] Filesystem plugin not available, trying without explicit permission request');
+      return true; // Proceed anyway, file picker might still work
+    }
+  } catch (error) {
+    console.error('[Mobile] Error requesting permissions:', error);
+    // Don't block on permission errors - the file picker might still work
+    return true;
+  }
+}
+
 // Web/Mobile file picker using file input element
 async function openFilesWeb() {
+  // On Capacitor/Android, request storage permissions first
+  if (isCapacitor) {
+    const permissionGranted = await requestStoragePermissions();
+    if (!permissionGranted) {
+      console.log('[Mobile] Permissions not granted, but proceeding with file picker anyway');
+      // Don't return early - the file picker might still trigger a permission prompt
+    }
+  }
+
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';

@@ -6,7 +6,9 @@
 
 **User Feedback After Initial Fix (PR #29)**: "audio source not supported"
 
-This indicates the initial fix (enhanced blob URL handling and error messages) did not resolve the underlying audio playback issue on Android.
+**User Feedback After Second Fix (PR #29 v1.4.2)**: "cannot play" error, and the app doesn't prompt for storage permissions ("не вызывает окно выдачи прав на память")
+
+This indicates that the previous fixes (enhanced blob URL handling) did not resolve the underlying issues, and the core problem is related to **Android runtime permissions not being requested**.
 
 ## Timeline of Events
 
@@ -20,14 +22,42 @@ This indicates the initial fix (enhanced blob URL handling and error messages) d
 - Added explicit MIME type handling
 - Added blob URL cleanup for memory management
 
-### Phase 3: User Feedback
+### Phase 3: User Feedback - "audio source not supported"
 - User reports: "audio source not supported"
 - Error code: `MEDIA_ERR_SRC_NOT_SUPPORTED` (code 4)
 - This indicates the HTML5 `<audio>` element cannot play the audio source
 
+### Phase 4: Second Fix Attempt (PR #29 v1.4.2)
+- Fixed blob URL creation to use `URL.createObjectURL(file)` directly
+- Added fallback loading methods (ArrayBuffer, DataURL)
+- Improved logging for debugging
+
+### Phase 5: User Feedback - "cannot play" + No Permission Prompt
+- User reports: "cannot play" error
+- **Critical finding**: The app doesn't show the permission request dialog
+- User suggests: "maybe more permissions are needed"
+- This indicates the root cause is **missing runtime permission requests**
+
 ## Root Cause Analysis
 
-### The Problem
+### The Primary Problem: Missing Runtime Permission Requests
+
+**The app declares permissions in AndroidManifest.xml but never requests them at runtime.**
+
+Starting with Android 6.0 (API level 23), apps must request "dangerous" permissions at runtime, not just declare them in the manifest. Storage permissions fall into this category.
+
+Additionally, **Android 13+ (API level 33)** introduced new granular media permissions:
+- `READ_MEDIA_AUDIO` - required to access audio files
+- `READ_MEDIA_VIDEO` - required to access video files
+- `READ_MEDIA_IMAGES` - required to access image files
+- `READ_EXTERNAL_STORAGE` is **deprecated and has no effect** on Android 13+
+
+The app was declaring `READ_EXTERNAL_STORAGE` but:
+1. Never requesting it at runtime (required for Android 6+)
+2. This permission has no effect on Android 13+ anyway
+3. Missing `READ_MEDIA_AUDIO` which is required for Android 13+
+
+### The Secondary Problem: Blob URL Handling
 
 The current implementation uses blob URLs created from `File` objects selected via `<input type="file">`:
 
@@ -160,25 +190,82 @@ async function loadTrackWithArrayBuffer(track) {
 }
 ```
 
+## Implemented Solution (PR #29 v1.4.3)
+
+### Fix 1: Add Runtime Permission Requests
+
+Added the `@capacitor/filesystem` plugin to properly request storage permissions at runtime:
+
+```javascript
+// Added to renderer.js
+async function requestStoragePermissions() {
+  if (!isCapacitor) return true;
+
+  try {
+    if (Filesystem) {
+      const permStatus = await Filesystem.checkPermissions();
+      if (permStatus.publicStorage === 'granted') {
+        return true;
+      }
+
+      const result = await Filesystem.requestPermissions();
+      return result.publicStorage === 'granted';
+    }
+  } catch (error) {
+    console.error('[Mobile] Error requesting permissions:', error);
+    return true; // Don't block, let file picker try anyway
+  }
+}
+```
+
+This function is called before opening the file picker on Android.
+
+### Fix 2: Add Android 13+ Permissions to Manifest
+
+Updated `build-android.yml` to add the required permissions:
+
+```xml
+<!-- Android 12 and below -->
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+
+<!-- Android 13+ (API 33+) granular media permissions -->
+<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+```
+
+### Fix 3: Add @capacitor/filesystem Dependency
+
+Added to `package.json`:
+```json
+"@capacitor/filesystem": "^6.0.0"
+```
+
+This plugin provides:
+- `checkPermissions()` - Check current permission status
+- `requestPermissions()` - Request storage permissions with proper Android dialog
+
 ## Recommended Implementation Strategy
 
-1. **Immediate Fix**: Remove the unnecessary `new Blob([file], { type: mimeType })` wrapper in `openFilesWeb()`. Use `URL.createObjectURL(file)` directly.
-
-2. **Short-term**: Improve the fallback mechanism to try multiple loading strategies.
-
-3. **Long-term**: Consider adding `@capawesome/capacitor-file-picker` or a native audio plugin for robust Android support.
+1. **Immediate Fix** (Implemented): Add runtime permission requests using `@capacitor/filesystem`
+2. **Short-term** (Implemented): Improve the fallback mechanism with multiple loading strategies
+3. **Long-term**: Consider adding `@capawesome/capacitor-file-picker` or a native audio plugin for robust Android support
 
 ## Sources and References
 
-1. [Capacitor Blob Downloads Issue #5478](https://github.com/ionic-team/capacitor/issues/5478)
-2. [Capawesome File Handling Guide](https://capawesome.io/blog/the-file-handling-guide-for-capacitor/)
-3. [Google Issue Tracker: No HTML5 Audio Support in WebView #36920496](https://issuetracker.google.com/issues/36920496)
-4. [Capacitor convertFileSrc Issue #3840](https://github.com/ionic-team/capacitor/issues/3840)
-5. [HTML5 Audio Not Working in Android WebView](https://www.tutorialspoint.com/HTML5-audio-tag-not-working-in-Android-Webview)
-6. [Howler.js Android WebView Issue #810](https://github.com/goldfire/howler.js/issues/810)
-7. [Resolving Blob Download Issues in Android WebView](https://medium.com/@SrimanthChowdary/resolving-blob-download-issues-in-android-webview-a-comprehensive-guide-for-developers-ad103e0833bd)
-8. [Capacitor File Picker Plugin](https://capawesome.io/plugins/file-picker/)
-9. [Capacitor Native Audio Plugin](https://github.com/capacitor-community/native-audio)
+1. [Android 13 Behavior Changes - Granular Media Permissions](https://developer.android.com/about/versions/13/behavior-changes-13)
+2. [Capacitor Filesystem Plugin Documentation](https://capacitorjs.com/docs/apis/filesystem)
+3. [Capacitor Filesystem permissions Issue #1512](https://github.com/ionic-team/capacitor-plugins/issues/1512)
+4. [Capacitor Blob Downloads Issue #5478](https://github.com/ionic-team/capacitor/issues/5478)
+5. [Capawesome File Handling Guide](https://capawesome.io/blog/the-file-handling-guide-for-capacitor/)
+6. [Google Issue Tracker: No HTML5 Audio Support in WebView #36920496](https://issuetracker.google.com/issues/36920496)
+7. [Capacitor convertFileSrc Issue #3840](https://github.com/ionic-team/capacitor/issues/3840)
+8. [HTML5 Audio Not Working in Android WebView](https://www.tutorialspoint.com/HTML5-audio-tag-not-working-in-Android-Webview)
+9. [Howler.js Android WebView Issue #810](https://github.com/goldfire/howler.js/issues/810)
+10. [Resolving Blob Download Issues in Android WebView](https://medium.com/@SrimanthChowdary/resolving-blob-download-issues-in-android-webview-a-comprehensive-guide-for-developers-ad103e0833bd)
+11. [Capacitor File Picker Plugin](https://capawesome.io/plugins/file-picker/)
+12. [Capacitor Native Audio Plugin](https://github.com/capacitor-community/native-audio)
 
 ## Related Issues and PRs
 
@@ -189,8 +276,11 @@ async function loadTrackWithArrayBuffer(track) {
 
 ## Lessons Learned
 
-1. **Don't wrap File objects in new Blob**: File is already a Blob subclass
-2. **Android WebView has limited HTML5 audio support**: Consider native plugins
-3. **Blob URLs are problematic on Android**: Use `Capacitor.convertFileSrc()` when possible
-4. **Always test on actual Android devices**: Emulators may not show all issues
-5. **Provide detailed error logging**: Critical for diagnosing mobile-specific issues
+1. **Android 6+ requires runtime permission requests**: Declaring permissions in AndroidManifest.xml is not enough - you must also request them programmatically at runtime
+2. **Android 13+ uses granular media permissions**: `READ_EXTERNAL_STORAGE` is deprecated - use `READ_MEDIA_AUDIO`, `READ_MEDIA_VIDEO`, `READ_MEDIA_IMAGES` instead
+3. **Don't wrap File objects in new Blob**: File is already a Blob subclass
+4. **Android WebView has limited HTML5 audio support**: Consider native plugins
+5. **Blob URLs are problematic on Android**: Use `Capacitor.convertFileSrc()` when possible
+6. **Always test on actual Android devices**: Emulators may not show all issues
+7. **Provide detailed error logging**: Critical for diagnosing mobile-specific issues
+8. **Use Capacitor plugins for permission management**: `@capacitor/filesystem` provides proper `checkPermissions()` and `requestPermissions()` methods
