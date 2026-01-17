@@ -905,8 +905,10 @@ async function loadTrack(index) {
   audioState.currentTrackIndex = index;
   const track = audioState.audioFiles[index];
 
-  // Reset retry flag for new track
-  track._retried = false;
+  // Reset retry counter for new track (will be set if loading from scratch)
+  if (track._retryCount === undefined) {
+    track._retryCount = 0;
+  }
 
   // Update screen
   updateScreenText(track.name);
@@ -920,7 +922,7 @@ async function loadTrack(index) {
     if (track.url) {
       // Web/Mobile: use blob URL
       if (isMobile || isCapacitor) {
-        console.log(`[Mobile] Loading track: ${track.name}, URL: ${track.url.substring(0, 50)}...`);
+        console.log(`[Mobile] Loading track: ${track.name}, URL type: ${track.url.substring(0, 20)}..., retryCount: ${track._retryCount}`);
       }
       audioState.audioElement.src = track.url;
     } else if (track.path) {
@@ -928,6 +930,7 @@ async function loadTrack(index) {
       audioState.audioElement.src = 'file://' + track.path;
     } else if (track.file) {
       // Fallback: create blob URL from File object if URL is missing
+      // Use createObjectURL directly on File (don't wrap in new Blob)
       console.log(`[Mobile] Creating blob URL from File object for: ${track.name}`);
       track.url = URL.createObjectURL(track.file);
       audioState.audioElement.src = track.url;
@@ -942,9 +945,9 @@ async function loadTrack(index) {
     console.error(`Error loading track ${track.name}:`, error);
     updateStatusBar(`Error: ${error.message}`);
 
-    // On mobile, try ArrayBuffer method if direct loading fails
-    if ((isMobile || isCapacitor) && track.file && !track._retried) {
-      await loadTrackWithArrayBuffer(track);
+    // On mobile, try fallback methods
+    if ((isMobile || isCapacitor) && track.file) {
+      await tryFallbackLoading(track);
     }
   }
 
@@ -1074,66 +1077,109 @@ function onAudioError(e) {
         errorMessage = 'Network error loading track';
         break;
       case MediaError.MEDIA_ERR_DECODE:
-        errorMessage = 'Audio format not supported';
+        errorMessage = 'Audio decode error';
         break;
       case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-        errorMessage = 'Audio source not supported';
+        errorMessage = 'Source not supported';
         break;
       default:
         errorMessage = `Audio error (code ${error.code})`;
     }
-    console.error('Audio error details:', {
+    console.error('[Audio] Error details:', {
       code: error.code,
+      codeName: getMediaErrorName(error.code),
       message: error.message,
       src: audio.src?.substring(0, 100) + '...'
     });
   } else {
-    console.error('Audio error (no details):', e);
+    console.error('[Audio] Error (no details):', e);
   }
 
-  updateStatusBar(errorMessage);
-
-  // On mobile, try alternative loading method if blob URL failed
+  // On mobile, try fallback loading methods
   if ((isMobile || isCapacitor) && audioState.audioFiles.length > 0) {
     const track = audioState.audioFiles[audioState.currentTrackIndex];
-    if (track && track.file && !track._retried) {
-      track._retried = true;
-      console.log('Retrying with ArrayBuffer method...');
-      loadTrackWithArrayBuffer(track);
+    if (track && track.file) {
+      // Try fallback methods (ArrayBuffer, DataURL)
+      tryFallbackLoading(track);
+    } else {
+      updateStatusBar(errorMessage);
     }
+  } else {
+    updateStatusBar(errorMessage);
+  }
+}
+
+// Helper to get MediaError name for logging
+function getMediaErrorName(code) {
+  const names = {
+    1: 'MEDIA_ERR_ABORTED',
+    2: 'MEDIA_ERR_NETWORK',
+    3: 'MEDIA_ERR_DECODE',
+    4: 'MEDIA_ERR_SRC_NOT_SUPPORTED'
+  };
+  return names[code] || 'UNKNOWN';
+}
+
+// Try fallback loading methods for mobile
+// Strategy: Direct blob URL (0) -> ArrayBuffer blob (1) -> Data URL (2)
+async function tryFallbackLoading(track) {
+  track._retryCount = (track._retryCount || 0) + 1;
+
+  console.log(`[Mobile] Trying fallback method ${track._retryCount} for: ${track.name}`);
+
+  if (track._retryCount === 1) {
+    // First retry: ArrayBuffer -> Blob method
+    updateStatusBar('Retrying (method 1)...');
+    await loadTrackWithArrayBuffer(track);
+  } else if (track._retryCount === 2) {
+    // Second retry: Data URL method (for smaller files only)
+    if (track.file.size <= 10 * 1024 * 1024) { // Only for files <= 10MB
+      updateStatusBar('Retrying (method 2)...');
+      await loadTrackWithDataURL(track);
+    } else {
+      console.log('[Mobile] File too large for DataURL fallback');
+      updateStatusBar(`Cannot play: ${track.name}`);
+    }
+  } else {
+    // All methods exhausted
+    console.error('[Mobile] All loading methods failed for:', track.name);
+    updateStatusBar(`Cannot play: ${track.name}`);
   }
 }
 
 // Alternative loading method using ArrayBuffer for problematic cases
+// This reads the file content and creates a fresh Blob with explicit MIME type
 async function loadTrackWithArrayBuffer(track) {
   if (!track.file) {
-    console.error('No File object available for ArrayBuffer loading');
+    console.error('[Mobile] No File object available for ArrayBuffer loading');
     return;
   }
 
   try {
-    updateStatusBar('Retrying with alternative method...');
+    console.log(`[Mobile] ArrayBuffer loading: ${track.name}`);
 
-    // Read file as ArrayBuffer
+    // Read file as ArrayBuffer (forces read of actual file content)
     const arrayBuffer = await track.file.arrayBuffer();
 
-    // Create a new Blob with explicit MIME type
-    const mimeType = getMimeType(track.fullName || track.file.name);
+    // Use the file's actual type first, fallback to extension-based detection
+    const mimeType = track.file.type || getMimeType(track.fullName || track.file.name);
+    console.log(`[Mobile] Creating blob with MIME: ${mimeType}, size: ${arrayBuffer.byteLength}`);
+
     const blob = new Blob([arrayBuffer], { type: mimeType });
 
     // Revoke old URL if exists
-    if (track.url) {
+    if (track.url && track.url.startsWith('blob:')) {
       URL.revokeObjectURL(track.url);
     }
 
     // Create new blob URL
     track.url = URL.createObjectURL(blob);
-    track._retried = true;
 
     // Load with new URL
     audioState.audioElement.src = track.url;
     await audioState.audioElement.load();
 
+    console.log(`[Mobile] ArrayBuffer method succeeded for: ${track.name}`);
     updateStatusBar(`Loaded: ${track.name}`);
 
     // Auto-play if was playing before
@@ -1141,7 +1187,48 @@ async function loadTrackWithArrayBuffer(track) {
       await audioState.audioElement.play();
     }
   } catch (error) {
-    console.error('ArrayBuffer loading also failed:', error);
+    console.error('[Mobile] ArrayBuffer loading failed:', error);
+    // Don't update status bar here - let tryFallbackLoading handle the next attempt
+  }
+}
+
+// Last resort: Load audio as Data URL (base64)
+// WARNING: This can cause memory issues with large files
+async function loadTrackWithDataURL(track) {
+  if (!track.file) {
+    console.error('[Mobile] No File object available for DataURL loading');
+    return;
+  }
+
+  try {
+    console.log(`[Mobile] DataURL loading (last resort): ${track.name}`);
+
+    const dataURL = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(track.file);
+    });
+
+    // Revoke old blob URL if exists (data URLs don't need revoking)
+    if (track.url && track.url.startsWith('blob:')) {
+      URL.revokeObjectURL(track.url);
+    }
+
+    // Use data URL directly
+    track.url = dataURL;
+    audioState.audioElement.src = dataURL;
+    await audioState.audioElement.load();
+
+    console.log(`[Mobile] DataURL method succeeded for: ${track.name}`);
+    updateStatusBar(`Loaded: ${track.name}`);
+
+    // Auto-play if was playing before
+    if (audioState.isPlaying) {
+      await audioState.audioElement.play();
+    }
+  } catch (error) {
+    console.error('[Mobile] DataURL loading failed:', error);
     updateStatusBar(`Cannot play: ${track.name}`);
   }
 }
@@ -1158,7 +1245,9 @@ function getMimeType(filename) {
     'm4a': 'audio/mp4',
     'webm': 'audio/webm',
     'opus': 'audio/opus',
-    'wma': 'audio/x-ms-wma'
+    'wma': 'audio/x-ms-wma',
+    '3gp': 'audio/3gpp',
+    'amr': 'audio/amr'
   };
   return mimeTypes[ext] || 'audio/*';
 }
@@ -1226,19 +1315,23 @@ async function openFilesWeb() {
         cleanupBlobUrls();
 
         const audioFiles = files.map((file, index) => {
-          // Create blob URL with explicit MIME type for better compatibility
-          const mimeType = getMimeType(file.name);
-          const blob = new Blob([file], { type: mimeType });
-          const url = URL.createObjectURL(blob);
+          // IMPORTANT: Use URL.createObjectURL directly on the File object
+          // File is already a Blob subclass - wrapping it in new Blob() can cause
+          // MEDIA_ERR_SRC_NOT_SUPPORTED on Android WebView
+          const url = URL.createObjectURL(file);
 
-          console.log(`[Mobile] Loaded file: ${file.name}, size: ${file.size}, type: ${mimeType}, url: ${url.substring(0, 50)}...`);
+          // Use file's actual MIME type, fallback to extension-based detection
+          const actualType = file.type || getMimeType(file.name);
+
+          console.log(`[Mobile] Loaded file: ${file.name}, size: ${file.size}, actualType: ${actualType}, reportedType: ${file.type}, url: ${url.substring(0, 50)}...`);
 
           return {
             name: file.name.replace(/\.[^/.]+$/, ''),
             fullName: file.name,
             file: file,  // Store the File object for fallback loading
-            url: url,    // Blob URL for audio element
-            _retried: false  // Track if we've tried alternative loading
+            url: url,    // Blob URL for audio element (created directly from File)
+            mimeType: actualType,  // Store the actual MIME type
+            _retryCount: 0  // Track retry attempts (0 = direct, 1 = arraybuffer, 2 = dataurl)
           };
         });
 

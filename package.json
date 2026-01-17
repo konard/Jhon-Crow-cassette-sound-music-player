@@ -1,6 +1,6 @@
 {
   "name": "cassette-music-player",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "A high-performance cassette-style music player for Windows and Android with 3D visuals and authentic tape sound effects",
   "main": "src/main.js",
   "scripts": {
