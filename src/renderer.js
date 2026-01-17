@@ -905,6 +905,9 @@ async function loadTrack(index) {
   audioState.currentTrackIndex = index;
   const track = audioState.audioFiles[index];
 
+  // Reset retry flag for new track
+  track._retried = false;
+
   // Update screen
   updateScreenText(track.name);
   // Note: showTrackOverlay is called when track starts playing, not on load
@@ -913,14 +916,37 @@ async function loadTrack(index) {
   updateStatusBar(`${index + 1}/${audioState.audioFiles.length}: ${track.name}`);
 
   // Load audio - use appropriate source based on platform
-  if (track.url) {
-    // Web/Mobile: use blob URL
-    audioState.audioElement.src = track.url;
-  } else if (track.path) {
-    // Electron: use file:// URL
-    audioState.audioElement.src = 'file://' + track.path;
+  try {
+    if (track.url) {
+      // Web/Mobile: use blob URL
+      if (isMobile || isCapacitor) {
+        console.log(`[Mobile] Loading track: ${track.name}, URL: ${track.url.substring(0, 50)}...`);
+      }
+      audioState.audioElement.src = track.url;
+    } else if (track.path) {
+      // Electron: use file:// URL
+      audioState.audioElement.src = 'file://' + track.path;
+    } else if (track.file) {
+      // Fallback: create blob URL from File object if URL is missing
+      console.log(`[Mobile] Creating blob URL from File object for: ${track.name}`);
+      track.url = URL.createObjectURL(track.file);
+      audioState.audioElement.src = track.url;
+    }
+
+    await audioState.audioElement.load();
+
+    if (isMobile || isCapacitor) {
+      console.log(`[Mobile] Track loaded successfully: ${track.name}`);
+    }
+  } catch (error) {
+    console.error(`Error loading track ${track.name}:`, error);
+    updateStatusBar(`Error: ${error.message}`);
+
+    // On mobile, try ArrayBuffer method if direct loading fails
+    if ((isMobile || isCapacitor) && track.file && !track._retried) {
+      await loadTrackWithArrayBuffer(track);
+    }
   }
-  await audioState.audioElement.load();
 
   // Save current track index for restoration on restart (Electron only)
   if (isElectron) {
@@ -1034,8 +1060,107 @@ function onTrackEnded() {
 }
 
 function onAudioError(e) {
-  console.error('Audio error:', e);
-  updateStatusBar('Error loading track');
+  const audio = audioState.audioElement;
+  const error = audio?.error;
+  let errorMessage = 'Error loading track';
+
+  // Provide detailed error information based on MediaError code
+  if (error) {
+    switch (error.code) {
+      case MediaError.MEDIA_ERR_ABORTED:
+        errorMessage = 'Playback aborted';
+        break;
+      case MediaError.MEDIA_ERR_NETWORK:
+        errorMessage = 'Network error loading track';
+        break;
+      case MediaError.MEDIA_ERR_DECODE:
+        errorMessage = 'Audio format not supported';
+        break;
+      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+        errorMessage = 'Audio source not supported';
+        break;
+      default:
+        errorMessage = `Audio error (code ${error.code})`;
+    }
+    console.error('Audio error details:', {
+      code: error.code,
+      message: error.message,
+      src: audio.src?.substring(0, 100) + '...'
+    });
+  } else {
+    console.error('Audio error (no details):', e);
+  }
+
+  updateStatusBar(errorMessage);
+
+  // On mobile, try alternative loading method if blob URL failed
+  if ((isMobile || isCapacitor) && audioState.audioFiles.length > 0) {
+    const track = audioState.audioFiles[audioState.currentTrackIndex];
+    if (track && track.file && !track._retried) {
+      track._retried = true;
+      console.log('Retrying with ArrayBuffer method...');
+      loadTrackWithArrayBuffer(track);
+    }
+  }
+}
+
+// Alternative loading method using ArrayBuffer for problematic cases
+async function loadTrackWithArrayBuffer(track) {
+  if (!track.file) {
+    console.error('No File object available for ArrayBuffer loading');
+    return;
+  }
+
+  try {
+    updateStatusBar('Retrying with alternative method...');
+
+    // Read file as ArrayBuffer
+    const arrayBuffer = await track.file.arrayBuffer();
+
+    // Create a new Blob with explicit MIME type
+    const mimeType = getMimeType(track.fullName || track.file.name);
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+
+    // Revoke old URL if exists
+    if (track.url) {
+      URL.revokeObjectURL(track.url);
+    }
+
+    // Create new blob URL
+    track.url = URL.createObjectURL(blob);
+    track._retried = true;
+
+    // Load with new URL
+    audioState.audioElement.src = track.url;
+    await audioState.audioElement.load();
+
+    updateStatusBar(`Loaded: ${track.name}`);
+
+    // Auto-play if was playing before
+    if (audioState.isPlaying) {
+      await audioState.audioElement.play();
+    }
+  } catch (error) {
+    console.error('ArrayBuffer loading also failed:', error);
+    updateStatusBar(`Cannot play: ${track.name}`);
+  }
+}
+
+// Get MIME type from filename
+function getMimeType(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  const mimeTypes = {
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'ogg': 'audio/ogg',
+    'flac': 'audio/flac',
+    'aac': 'audio/aac',
+    'm4a': 'audio/mp4',
+    'webm': 'audio/webm',
+    'opus': 'audio/opus',
+    'wma': 'audio/x-ms-wma'
+  };
+  return mimeTypes[ext] || 'audio/*';
 }
 
 // ============================================================================
@@ -1097,18 +1222,37 @@ async function openFilesWeb() {
     input.addEventListener('change', async (e) => {
       const files = Array.from(e.target.files);
       if (files.length > 0) {
-        const audioFiles = files.map((file, index) => ({
-          name: file.name.replace(/\.[^/.]+$/, ''),
-          fullName: file.name,
-          file: file,  // Store the File object for mobile
-          url: URL.createObjectURL(file)  // Create blob URL
-        }));
+        // Clean up old blob URLs to prevent memory leaks
+        cleanupBlobUrls();
+
+        const audioFiles = files.map((file, index) => {
+          // Create blob URL with explicit MIME type for better compatibility
+          const mimeType = getMimeType(file.name);
+          const blob = new Blob([file], { type: mimeType });
+          const url = URL.createObjectURL(blob);
+
+          console.log(`[Mobile] Loaded file: ${file.name}, size: ${file.size}, type: ${mimeType}, url: ${url.substring(0, 50)}...`);
+
+          return {
+            name: file.name.replace(/\.[^/.]+$/, ''),
+            fullName: file.name,
+            file: file,  // Store the File object for fallback loading
+            url: url,    // Blob URL for audio element
+            _retried: false  // Track if we've tried alternative loading
+          };
+        });
 
         audioState.folderPath = null;
         audioState.audioFiles = audioFiles;
         audioState.currentTrackIndex = 0;
-        await loadTrack(0);
-        updateStatusBar(`Loaded ${audioFiles.length} tracks`);
+
+        try {
+          await loadTrack(0);
+          updateStatusBar(`Loaded ${audioFiles.length} tracks`);
+        } catch (error) {
+          console.error('Error loading first track:', error);
+          updateStatusBar(`Error loading track: ${error.message}`);
+        }
       }
       document.body.removeChild(input);
       resolve();
@@ -1122,6 +1266,22 @@ async function openFilesWeb() {
     document.body.appendChild(input);
     input.click();
   });
+}
+
+// Clean up old blob URLs to prevent memory leaks
+function cleanupBlobUrls() {
+  if (audioState.audioFiles && audioState.audioFiles.length > 0) {
+    audioState.audioFiles.forEach(track => {
+      if (track.url && track.url.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(track.url);
+          console.log(`[Mobile] Revoked blob URL for: ${track.name}`);
+        } catch (e) {
+          // Ignore errors when revoking
+        }
+      }
+    });
+  }
 }
 
 // ============================================================================
