@@ -2,6 +2,29 @@
 // Sony-style portable cassette player with 3D visuals and tape effects
 
 // ============================================================================
+// PLATFORM DETECTION
+// ============================================================================
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+const isElectron = !!(window.electronAPI);
+const isCapacitor = typeof window.Capacitor !== 'undefined';
+
+// Screen Orientation API (Capacitor plugin will be loaded if available)
+let ScreenOrientation = null;
+
+// Apply mobile class to body if on mobile platform
+if (isMobile || isCapacitor) {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.body.classList.add('mobile-platform');
+  });
+
+  // Try to load Capacitor Screen Orientation plugin
+  if (isCapacitor && window.Capacitor.Plugins) {
+    ScreenOrientation = window.Capacitor.Plugins.ScreenOrientation;
+  }
+}
+
+// ============================================================================
 // CONFIGURATION
 // ============================================================================
 const CONFIG = {
@@ -40,6 +63,9 @@ const CONFIG = {
     gradientEndColor: '#2a2a4e',
     gradientAngle: 180,
     backgroundOpacity: 80
+  },
+  mobile: {
+    autoRotate: false  // Default: locked to landscape
   }
 };
 
@@ -99,14 +125,19 @@ async function init() {
   // Set initial visibility for bottom captions based on window size
   updateBottomCaptionsVisibility();
 
+  // Initialize mobile orientation (lock to landscape by default)
+  await initMobileOrientation();
+
   // Start animation loop
   animate();
 }
 
-// Load settings from persistent storage
+// Load settings from persistent storage (Electron only)
 async function loadSavedSettings() {
+  if (!isElectron) return;
+
   try {
-    if (window.electronAPI && window.electronAPI.getSettings) {
+    if (window.electronAPI.getSettings) {
       const settings = await window.electronAPI.getSettings();
       if (settings) {
         // Apply audio settings
@@ -165,10 +196,12 @@ async function restorePlaybackState(playbackSettings) {
   }
 }
 
-// Save current settings to persistent storage
+// Save current settings to persistent storage (Electron only)
 function saveCurrentSettings() {
+  if (!isElectron) return;
+
   try {
-    if (window.electronAPI && window.electronAPI.saveSettings) {
+    if (window.electronAPI.saveSettings) {
       const settings = {
         audio: {
           volume: CONFIG.audio.volume,
@@ -879,12 +912,20 @@ async function loadTrack(index) {
   // Update status bar
   updateStatusBar(`${index + 1}/${audioState.audioFiles.length}: ${track.name}`);
 
-  // Load audio
-  audioState.audioElement.src = 'file://' + track.path;
+  // Load audio - use appropriate source based on platform
+  if (track.url) {
+    // Web/Mobile: use blob URL
+    audioState.audioElement.src = track.url;
+  } else if (track.path) {
+    // Electron: use file:// URL
+    audioState.audioElement.src = 'file://' + track.path;
+  }
   await audioState.audioElement.load();
 
-  // Save current track index for restoration on restart
-  saveCurrentSettings();
+  // Save current track index for restoration on restart (Electron only)
+  if (isElectron) {
+    saveCurrentSettings();
+  }
 }
 
 async function play() {
@@ -920,8 +961,8 @@ async function play() {
     audioState.effectNodes.noiseGain.gain.value = 0.015 * CONFIG.audio.tapeHissLevel;
   }
 
-  // Update tray icon
-  if (window.electronAPI && window.electronAPI.updatePlayState) {
+  // Update tray icon (Electron only)
+  if (isElectron && window.electronAPI.updatePlayState) {
     window.electronAPI.updatePlayState(true);
   }
 }
@@ -938,8 +979,8 @@ function stop() {
     audioState.effectNodes.noiseGain.gain.value = 0;
   }
 
-  // Update tray icon
-  if (window.electronAPI && window.electronAPI.updatePlayState) {
+  // Update tray icon (Electron only)
+  if (isElectron && window.electronAPI.updatePlayState) {
     window.electronAPI.updatePlayState(false);
   }
 }
@@ -955,8 +996,8 @@ function pause() {
     audioState.effectNodes.noiseGain.gain.value = 0;
   }
 
-  // Update tray icon
-  if (window.electronAPI && window.electronAPI.updatePlayState) {
+  // Update tray icon (Electron only)
+  if (isElectron && window.electronAPI.updatePlayState) {
     window.electronAPI.updatePlayState(false);
   }
 }
@@ -1001,37 +1042,86 @@ function onAudioError(e) {
 // FILE HANDLING
 // ============================================================================
 async function openFolder() {
-  try {
-    const result = await window.electronAPI.openFolderDialog();
-    if (result && result.audioFiles.length > 0) {
-      audioState.folderPath = result.folderPath;
-      audioState.audioFiles = result.audioFiles;
-      audioState.currentTrackIndex = 0;
-      await loadTrack(0);
-      updateStatusBar(`Loaded ${result.audioFiles.length} tracks`);
-      // Save playback state for restoration on restart
-      saveCurrentSettings();
+  if (isElectron) {
+    try {
+      const result = await window.electronAPI.openFolderDialog();
+      if (result && result.audioFiles.length > 0) {
+        audioState.folderPath = result.folderPath;
+        audioState.audioFiles = result.audioFiles;
+        audioState.currentTrackIndex = 0;
+        await loadTrack(0);
+        updateStatusBar(`Loaded ${result.audioFiles.length} tracks`);
+        // Save playback state for restoration on restart
+        saveCurrentSettings();
+      }
+    } catch (error) {
+      console.error('Error opening folder:', error);
     }
-  } catch (error) {
-    console.error('Error opening folder:', error);
+  } else {
+    // Mobile/Web: use file input to select files
+    await openFilesWeb();
   }
 }
 
 async function openFiles() {
-  try {
-    const result = await window.electronAPI.openFileDialog();
-    if (result && result.audioFiles.length > 0) {
-      audioState.folderPath = result.folderPath;
-      audioState.audioFiles = result.audioFiles;
-      audioState.currentTrackIndex = 0;
-      await loadTrack(0);
-      updateStatusBar(`Loaded ${result.audioFiles.length} tracks`);
-      // Save playback state for restoration on restart
-      saveCurrentSettings();
+  if (isElectron) {
+    try {
+      const result = await window.electronAPI.openFileDialog();
+      if (result && result.audioFiles.length > 0) {
+        audioState.folderPath = result.folderPath;
+        audioState.audioFiles = result.audioFiles;
+        audioState.currentTrackIndex = 0;
+        await loadTrack(0);
+        updateStatusBar(`Loaded ${result.audioFiles.length} tracks`);
+        // Save playback state for restoration on restart
+        saveCurrentSettings();
+      }
+    } catch (error) {
+      console.error('Error opening files:', error);
     }
-  } catch (error) {
-    console.error('Error opening files:', error);
+  } else {
+    // Mobile/Web: use file input to select files
+    await openFilesWeb();
   }
+}
+
+// Web/Mobile file picker using file input element
+async function openFilesWeb() {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    input.multiple = true;
+    input.style.display = 'none';
+
+    input.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length > 0) {
+        const audioFiles = files.map((file, index) => ({
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          fullName: file.name,
+          file: file,  // Store the File object for mobile
+          url: URL.createObjectURL(file)  // Create blob URL
+        }));
+
+        audioState.folderPath = null;
+        audioState.audioFiles = audioFiles;
+        audioState.currentTrackIndex = 0;
+        await loadTrack(0);
+        updateStatusBar(`Loaded ${audioFiles.length} tracks`);
+      }
+      document.body.removeChild(input);
+      resolve();
+    });
+
+    input.addEventListener('cancel', () => {
+      document.body.removeChild(input);
+      resolve();
+    });
+
+    document.body.appendChild(input);
+    input.click();
+  });
 }
 
 // ============================================================================
@@ -1081,52 +1171,75 @@ function hexToRgba(hex, alpha) {
 function setupEventListeners() {
   const canvas = document.getElementById('three-canvas');
 
-  // Window controls
-  document.getElementById('btn-minimize').addEventListener('click', () => {
-    window.electronAPI.minimizeWindow();
-  });
-  document.getElementById('btn-maximize').addEventListener('click', () => {
-    window.electronAPI.maximizeWindow();
-  });
-  document.getElementById('btn-close').addEventListener('click', () => {
-    window.electronAPI.closeWindow();
-  });
+  // Window controls (only for Electron)
+  if (isElectron) {
+    document.getElementById('btn-minimize').addEventListener('click', () => {
+      window.electronAPI.minimizeWindow();
+    });
+    document.getElementById('btn-maximize').addEventListener('click', () => {
+      window.electronAPI.maximizeWindow();
+    });
+    document.getElementById('btn-close').addEventListener('click', () => {
+      window.electronAPI.closeWindow();
+    });
+  }
 
   // Mouse click for button interaction
   canvas.addEventListener('click', onCanvasClick);
 
-  // Right-click to open settings panel
+  // Touch support for mobile
+  if (isMobile || isCapacitor) {
+    canvas.addEventListener('touchend', onCanvasTouchEnd, { passive: false });
+    // Long press for settings on mobile (instead of right-click)
+    setupLongPressHandler(canvas);
+  }
+
+  // Right-click to open settings panel (desktop)
   canvas.addEventListener('contextmenu', onContextMenu);
 
-  // Double-click to open folder
+  // Double-click to open folder (desktop)
   canvas.addEventListener('dblclick', async () => {
     await openFolder();
   });
 
-  // Mouse drag for window movement via cassette
-  canvas.addEventListener('mousedown', onCanvasMouseDown);
-  document.addEventListener('mousemove', onCanvasMouseMove);
-  document.addEventListener('mouseup', onCanvasMouseUp);
+  // Double-tap to open folder (mobile)
+  if (isMobile || isCapacitor) {
+    setupDoubleTapHandler(canvas);
+  }
 
-  // Mouse wheel for zoom
+  // Mouse drag for window movement via cassette (only for Electron)
+  if (isElectron) {
+    canvas.addEventListener('mousedown', onCanvasMouseDown);
+    document.addEventListener('mousemove', onCanvasMouseMove);
+    document.addEventListener('mouseup', onCanvasMouseUp);
+  }
+
+  // Mouse wheel for zoom (desktop)
   canvas.addEventListener('wheel', onMouseWheel);
+
+  // Pinch to zoom (mobile)
+  if (isMobile || isCapacitor) {
+    setupPinchZoomHandler(canvas);
+  }
 
   // Keyboard controls
   document.addEventListener('keydown', onKeyDown);
 
-  // Drag and drop
-  canvas.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  });
+  // Drag and drop (desktop only - mobile uses file input)
+  if (!isMobile && !isCapacitor) {
+    canvas.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
 
-  canvas.addEventListener('drop', onFileDrop);
+    canvas.addEventListener('drop', onFileDrop);
+  }
 
   // Setup settings panel event listeners
   setupSettingsEventListeners();
 
-  // Listen for tray toggle play event
-  if (window.electronAPI && window.electronAPI.onTrayTogglePlay) {
+  // Listen for tray toggle play event (Electron only)
+  if (isElectron && window.electronAPI.onTrayTogglePlay) {
     window.electronAPI.onTrayTogglePlay(async () => {
       await togglePlayPause();
     });
@@ -1230,6 +1343,100 @@ function onCanvasClick(event) {
       handleButtonPress(buttonType);
     }
   }
+}
+
+// Touch event handler for mobile
+function onCanvasTouchEnd(event) {
+  if (event.changedTouches.length !== 1) return;
+
+  const touch = event.changedTouches[0];
+  const canvas = document.getElementById('three-canvas');
+  const rect = canvas.getBoundingClientRect();
+
+  mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  // Check button intersections
+  const buttonsGroup = cassettePlayer.userData.buttonsGroup;
+  if (buttonsGroup) {
+    const buttonMeshes = buttonsGroup.children.filter(c => c.userData.isButton);
+    const intersects = raycaster.intersectObjects(buttonMeshes);
+
+    if (intersects.length > 0) {
+      event.preventDefault();
+      const buttonType = intersects[0].object.userData.buttonType;
+      handleButtonPress(buttonType);
+    }
+  }
+}
+
+// Long press handler for mobile (opens settings)
+let longPressTimer = null;
+function setupLongPressHandler(element) {
+  element.addEventListener('touchstart', (e) => {
+    longPressTimer = setTimeout(() => {
+      openSettings();
+    }, 600);
+  }, { passive: true });
+
+  element.addEventListener('touchend', () => {
+    clearTimeout(longPressTimer);
+  }, { passive: true });
+
+  element.addEventListener('touchmove', () => {
+    clearTimeout(longPressTimer);
+  }, { passive: true });
+}
+
+// Double tap handler for mobile (opens folder)
+let lastTapTime = 0;
+function setupDoubleTapHandler(element) {
+  element.addEventListener('touchend', async (e) => {
+    const currentTime = Date.now();
+    const tapLength = currentTime - lastTapTime;
+    if (tapLength < 300 && tapLength > 0) {
+      e.preventDefault();
+      await openFolder();
+    }
+    lastTapTime = currentTime;
+  }, { passive: false });
+}
+
+// Pinch to zoom handler for mobile
+let initialPinchDistance = 0;
+function setupPinchZoomHandler(element) {
+  element.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      initialPinchDistance = getPinchDistance(e.touches);
+    }
+  }, { passive: true });
+
+  element.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && initialPinchDistance > 0) {
+      e.preventDefault();
+      const currentDistance = getPinchDistance(e.touches);
+      const delta = currentDistance - initialPinchDistance;
+      const zoomSpeed = 0.0002;
+
+      // Pinch out = zoom in (camera moves closer)
+      camera.position.z -= delta * zoomSpeed;
+      camera.position.z = Math.max(0.12, Math.min(0.6, camera.position.z));
+
+      initialPinchDistance = currentDistance;
+    }
+  }, { passive: false });
+
+  element.addEventListener('touchend', () => {
+    initialPinchDistance = 0;
+  }, { passive: true });
+}
+
+function getPinchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 async function handleButtonPress(buttonType) {
@@ -1345,6 +1552,79 @@ function animate() {
 }
 
 // ============================================================================
+// SCREEN ORIENTATION CONTROL (Mobile)
+// ============================================================================
+
+// Lock screen to landscape orientation
+async function lockToLandscape() {
+  // Try Capacitor plugin first
+  if (ScreenOrientation && ScreenOrientation.lock) {
+    try {
+      await ScreenOrientation.lock({ orientation: 'landscape' });
+      return true;
+    } catch (e) {
+      console.log('Capacitor ScreenOrientation.lock failed:', e);
+    }
+  }
+
+  // Fallback to Web Screen Orientation API
+  if (screen.orientation && screen.orientation.lock) {
+    try {
+      await screen.orientation.lock('landscape');
+      return true;
+    } catch (e) {
+      console.log('Web screen.orientation.lock failed:', e);
+    }
+  }
+
+  return false;
+}
+
+// Unlock screen orientation (allow auto-rotate)
+async function unlockOrientation() {
+  // Try Capacitor plugin first
+  if (ScreenOrientation && ScreenOrientation.unlock) {
+    try {
+      await ScreenOrientation.unlock();
+      return true;
+    } catch (e) {
+      console.log('Capacitor ScreenOrientation.unlock failed:', e);
+    }
+  }
+
+  // Fallback to Web Screen Orientation API
+  if (screen.orientation && screen.orientation.unlock) {
+    try {
+      screen.orientation.unlock();
+      return true;
+    } catch (e) {
+      console.log('Web screen.orientation.unlock failed:', e);
+    }
+  }
+
+  return false;
+}
+
+// Apply orientation based on settings
+async function applyOrientationSetting() {
+  if (!isMobile && !isCapacitor) return;
+
+  if (CONFIG.mobile.autoRotate) {
+    await unlockOrientation();
+  } else {
+    await lockToLandscape();
+  }
+}
+
+// Initialize orientation on mobile
+async function initMobileOrientation() {
+  if (!isMobile && !isCapacitor) return;
+
+  // Apply initial orientation setting (default: locked to landscape)
+  await applyOrientationSetting();
+}
+
+// ============================================================================
 // SETTINGS PANEL
 // ============================================================================
 let settingsOpen = false;
@@ -1406,8 +1686,8 @@ function syncSettingsUI() {
   // Sync effects enabled checkbox
   document.getElementById('checkbox-effects-enabled').checked = CONFIG.audio.effectsEnabled;
 
-  // Sync always-on-top checkbox
-  if (window.electronAPI && window.electronAPI.getAlwaysOnTop) {
+  // Sync always-on-top checkbox (Electron only)
+  if (isElectron && window.electronAPI.getAlwaysOnTop) {
     window.electronAPI.getAlwaysOnTop().then(value => {
       document.getElementById('checkbox-always-on-top').checked = value;
     });
@@ -1421,6 +1701,11 @@ function syncSettingsUI() {
   document.getElementById('angle-value').textContent = CONFIG.appearance.gradientAngle + '°';
   document.getElementById('slider-bg-opacity').value = CONFIG.appearance.backgroundOpacity;
   document.getElementById('opacity-value').textContent = CONFIG.appearance.backgroundOpacity + '%';
+
+  // Sync mobile settings (auto-rotate)
+  if (isMobile || isCapacitor) {
+    document.getElementById('checkbox-auto-rotate').checked = CONFIG.mobile.autoRotate;
+  }
 }
 
 function setupSettingsEventListeners() {
@@ -1562,11 +1847,17 @@ function setupSettingsEventListeners() {
     saveCurrentSettings();
   });
 
-  // Always on top checkbox
+  // Always on top checkbox (Electron only)
   document.getElementById('checkbox-always-on-top').addEventListener('change', (e) => {
-    if (window.electronAPI && window.electronAPI.setAlwaysOnTop) {
+    if (isElectron && window.electronAPI.setAlwaysOnTop) {
       window.electronAPI.setAlwaysOnTop(e.target.checked);
     }
+  });
+
+  // Auto-rotate checkbox (Mobile only)
+  document.getElementById('checkbox-auto-rotate').addEventListener('change', async (e) => {
+    CONFIG.mobile.autoRotate = e.target.checked;
+    await applyOrientationSetting();
   });
 
   // Appearance settings - Gradient enabled checkbox

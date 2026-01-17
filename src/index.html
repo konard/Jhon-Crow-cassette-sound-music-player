@@ -457,6 +457,108 @@
       z-index: -1;
       border-radius: 8px;
     }
+
+    /* Mobile-specific styles */
+    @media (max-width: 600px), (pointer: coarse) {
+      /* Hide controls hint on mobile - users can't hover/right-click the same way */
+      #controls-hint {
+        display: none !important;
+      }
+
+      /* Make window controls larger for touch targets */
+      .window-btn {
+        width: 20px;
+        height: 20px;
+      }
+
+      /* Larger touch targets for settings buttons */
+      .settings-button {
+        padding: 14px;
+        font-size: 13px;
+      }
+
+      /* Larger slider thumbs for touch */
+      .control-slider::-webkit-slider-thumb {
+        width: 20px;
+        height: 20px;
+      }
+
+      /* Settings panel adjustments for mobile */
+      #settings-panel {
+        width: 95%;
+        max-width: 400px;
+        max-height: 90%;
+      }
+
+      .settings-content {
+        max-height: 350px;
+      }
+
+      /* Larger tabs for touch */
+      .settings-tab {
+        padding: 12px 6px;
+        font-size: 12px;
+      }
+
+      /* Larger toggle switches for touch */
+      .toggle-switch {
+        width: 44px;
+        height: 24px;
+      }
+
+      .toggle-switch::after {
+        width: 20px;
+        height: 20px;
+      }
+
+      .toggle-checkbox:checked + .toggle-switch::after {
+        left: 22px;
+      }
+
+      /* Adjust status bar for mobile */
+      #status-bar {
+        font-size: 12px;
+        padding: 8px 14px;
+      }
+
+      /* Adjust track overlay for mobile */
+      #track-overlay {
+        font-size: 16px;
+        padding: 10px 18px;
+        max-width: 90%;
+      }
+    }
+
+    /* Hide window controls on mobile platforms (they have their own) */
+    .mobile-platform #window-controls {
+      display: none !important;
+    }
+
+    /* Hide drag region on mobile (no window dragging) */
+    .mobile-platform #drag-region {
+      display: none !important;
+    }
+
+    /* Hide window options section on mobile (not applicable) */
+    .mobile-platform #window-options-section {
+      display: none !important;
+    }
+
+    /* Show mobile controls and hide desktop controls on mobile */
+    .mobile-platform #desktop-controls,
+    .mobile-platform #desktop-controls-list {
+      display: none !important;
+    }
+
+    .mobile-platform #mobile-controls,
+    .mobile-platform #mobile-controls-list {
+      display: inline !important;
+    }
+
+    /* Show orientation section on mobile */
+    .mobile-platform #mobile-orientation-section {
+      display: block !important;
+    }
   </style>
 </head>
 <body>
@@ -519,15 +621,29 @@
             </div>
             <p class="info-text">Double-click the player or drag & drop files to load music.</p>
 
-            <div class="section-title">Window Options</div>
-            <div class="control-group">
-              <label class="toggle-label">
-                <input type="checkbox" id="checkbox-always-on-top" class="toggle-checkbox">
-                <span class="toggle-switch"></span>
-                <span class="toggle-text">Always on Top</span>
-              </label>
+            <div id="window-options-section">
+              <div class="section-title">Window Options</div>
+              <div class="control-group">
+                <label class="toggle-label">
+                  <input type="checkbox" id="checkbox-always-on-top" class="toggle-checkbox">
+                  <span class="toggle-switch"></span>
+                  <span class="toggle-text">Always on Top</span>
+                </label>
+              </div>
+              <p class="info-text">Keep the player window above all other windows.</p>
             </div>
-            <p class="info-text">Keep the player window above all other windows.</p>
+
+            <div id="mobile-orientation-section" style="display: none;">
+              <div class="section-title">Screen Orientation</div>
+              <div class="control-group">
+                <label class="toggle-label">
+                  <input type="checkbox" id="checkbox-auto-rotate" class="toggle-checkbox">
+                  <span class="toggle-switch"></span>
+                  <span class="toggle-text">Auto-rotate</span>
+                </label>
+              </div>
+              <p class="info-text">When enabled, the app will rotate with your device. When disabled, stays in landscape mode.</p>
+            </div>
           </div>
 
           <!-- Appearance Tab -->
@@ -628,7 +744,8 @@
             <div class="section-title">Cassette Music Player</div>
             <p class="info-text">
               A nostalgic music player inspired by the Sony Walkman WM-10.<br><br>
-              <strong>Controls:</strong><br>
+              <strong id="desktop-controls">Desktop Controls:</strong><br>
+              <span id="desktop-controls-list">
               - Click buttons on player to control playback<br>
               - Double-click to open folder<br>
               - Drag the cassette to move window<br>
@@ -637,9 +754,17 @@
               - Arrow keys: Up/Down for volume, Left/Right for tracks<br>
               - Space: Play/Pause<br>
               - Ctrl+O: Open folder
+              </span>
+              <strong id="mobile-controls" style="display: none;">Mobile Controls:</strong><br>
+              <span id="mobile-controls-list" style="display: none;">
+              - Tap buttons on player to control playback<br>
+              - Double-tap to open files<br>
+              - Long press to open settings<br>
+              - Pinch to zoom in/out
+              </span>
             </p>
             <div class="section-title">Version</div>
-            <p class="info-text">v1.3.0</p>
+            <p class="info-text">v1.4.1</p>
           </div>
         </div>
       </div>
