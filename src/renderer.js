@@ -12,15 +12,23 @@ const isCapacitor = typeof window.Capacitor !== 'undefined';
 // Screen Orientation API (Capacitor plugin will be loaded if available)
 let ScreenOrientation = null;
 
+// Filesystem API for permission management (Capacitor)
+let Filesystem = null;
+
+// File Picker API for native file selection (Capacitor - resolves Android blob URL issues)
+let FilePicker = null;
+
 // Apply mobile class to body if on mobile platform
 if (isMobile || isCapacitor) {
   document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('mobile-platform');
   });
 
-  // Try to load Capacitor Screen Orientation plugin
+  // Try to load Capacitor plugins
   if (isCapacitor && window.Capacitor.Plugins) {
     ScreenOrientation = window.Capacitor.Plugins.ScreenOrientation;
+    Filesystem = window.Capacitor.Plugins.Filesystem;
+    FilePicker = window.Capacitor.Plugins.FilePicker;
   }
 }
 
@@ -905,6 +913,11 @@ async function loadTrack(index) {
   audioState.currentTrackIndex = index;
   const track = audioState.audioFiles[index];
 
+  // Reset retry counter for new track (will be set if loading from scratch)
+  if (track._retryCount === undefined) {
+    track._retryCount = 0;
+  }
+
   // Update screen
   updateScreenText(track.name);
   // Note: showTrackOverlay is called when track starts playing, not on load
@@ -913,14 +926,53 @@ async function loadTrack(index) {
   updateStatusBar(`${index + 1}/${audioState.audioFiles.length}: ${track.name}`);
 
   // Load audio - use appropriate source based on platform
-  if (track.url) {
-    // Web/Mobile: use blob URL
-    audioState.audioElement.src = track.url;
-  } else if (track.path) {
-    // Electron: use file:// URL
-    audioState.audioElement.src = 'file://' + track.path;
+  try {
+    if (track._isNativePath && track.url) {
+      // Native path (from Capacitor FilePicker): URL already converted via convertFileSrc
+      // This is the most reliable method for Android - avoids blob URL issues
+      console.log(`[Mobile] Loading with native path: ${track.name}, URL: ${track.url}`);
+      audioState.audioElement.src = track.url;
+    } else if (track.url) {
+      // Web/Mobile: use blob URL (fallback when native picker not available)
+      if (isMobile || isCapacitor) {
+        console.log(`[Mobile] Loading with blob URL: ${track.name}, URL: ${track.url.substring(0, 50)}..., retryCount: ${track._retryCount}`);
+      }
+      audioState.audioElement.src = track.url;
+    } else if (track.path && isElectron) {
+      // Electron: use file:// URL
+      audioState.audioElement.src = 'file://' + track.path;
+    } else if (track.path && isCapacitor && window.Capacitor && window.Capacitor.convertFileSrc) {
+      // Capacitor with native path but URL not yet converted
+      console.log(`[Mobile] Converting native path: ${track.path}`);
+      track.url = window.Capacitor.convertFileSrc(track.path);
+      track._isNativePath = true;
+      audioState.audioElement.src = track.url;
+    } else if (track.file) {
+      // Fallback: create blob URL from File object if URL is missing
+      // Use createObjectURL directly on File (don't wrap in new Blob)
+      console.log(`[Mobile] Creating blob URL from File object for: ${track.name}`);
+      track.url = URL.createObjectURL(track.file);
+      audioState.audioElement.src = track.url;
+    }
+
+    await audioState.audioElement.load();
+
+    if (isMobile || isCapacitor) {
+      console.log(`[Mobile] Track loaded successfully: ${track.name}, isNativePath: ${track._isNativePath}`);
+    }
+  } catch (error) {
+    console.error(`Error loading track ${track.name}:`, error);
+    updateStatusBar(`Error: ${error.message}`);
+
+    // On mobile, try fallback methods (only if not using native path - native paths don't have File objects)
+    if ((isMobile || isCapacitor) && track.file && !track._isNativePath) {
+      await tryFallbackLoading(track);
+    } else if (track._isNativePath) {
+      // Native path failed - this shouldn't happen normally
+      console.error(`[Mobile] Native path loading failed for: ${track.name}`);
+      updateStatusBar(`Cannot play: ${track.name}`);
+    }
   }
-  await audioState.audioElement.load();
 
   // Save current track index for restoration on restart (Electron only)
   if (isElectron) {
@@ -1034,8 +1086,193 @@ function onTrackEnded() {
 }
 
 function onAudioError(e) {
-  console.error('Audio error:', e);
-  updateStatusBar('Error loading track');
+  const audio = audioState.audioElement;
+  const error = audio?.error;
+  let errorMessage = 'Error loading track';
+
+  // Provide detailed error information based on MediaError code
+  if (error) {
+    switch (error.code) {
+      case MediaError.MEDIA_ERR_ABORTED:
+        errorMessage = 'Playback aborted';
+        break;
+      case MediaError.MEDIA_ERR_NETWORK:
+        errorMessage = 'Network error loading track';
+        break;
+      case MediaError.MEDIA_ERR_DECODE:
+        errorMessage = 'Audio decode error';
+        break;
+      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+        errorMessage = 'Source not supported';
+        break;
+      default:
+        errorMessage = `Audio error (code ${error.code})`;
+    }
+    console.error('[Audio] Error details:', {
+      code: error.code,
+      codeName: getMediaErrorName(error.code),
+      message: error.message,
+      src: audio.src?.substring(0, 100) + '...'
+    });
+  } else {
+    console.error('[Audio] Error (no details):', e);
+  }
+
+  // On mobile, try fallback loading methods
+  if ((isMobile || isCapacitor) && audioState.audioFiles.length > 0) {
+    const track = audioState.audioFiles[audioState.currentTrackIndex];
+    if (track && track.file) {
+      // Try fallback methods (ArrayBuffer, DataURL)
+      tryFallbackLoading(track);
+    } else {
+      updateStatusBar(errorMessage);
+    }
+  } else {
+    updateStatusBar(errorMessage);
+  }
+}
+
+// Helper to get MediaError name for logging
+function getMediaErrorName(code) {
+  const names = {
+    1: 'MEDIA_ERR_ABORTED',
+    2: 'MEDIA_ERR_NETWORK',
+    3: 'MEDIA_ERR_DECODE',
+    4: 'MEDIA_ERR_SRC_NOT_SUPPORTED'
+  };
+  return names[code] || 'UNKNOWN';
+}
+
+// Try fallback loading methods for mobile
+// Strategy: Direct blob URL (0) -> ArrayBuffer blob (1) -> Data URL (2)
+async function tryFallbackLoading(track) {
+  track._retryCount = (track._retryCount || 0) + 1;
+
+  console.log(`[Mobile] Trying fallback method ${track._retryCount} for: ${track.name}`);
+
+  if (track._retryCount === 1) {
+    // First retry: ArrayBuffer -> Blob method
+    updateStatusBar('Retrying (method 1)...');
+    await loadTrackWithArrayBuffer(track);
+  } else if (track._retryCount === 2) {
+    // Second retry: Data URL method (for smaller files only)
+    if (track.file.size <= 10 * 1024 * 1024) { // Only for files <= 10MB
+      updateStatusBar('Retrying (method 2)...');
+      await loadTrackWithDataURL(track);
+    } else {
+      console.log('[Mobile] File too large for DataURL fallback');
+      updateStatusBar(`Cannot play: ${track.name}`);
+    }
+  } else {
+    // All methods exhausted
+    console.error('[Mobile] All loading methods failed for:', track.name);
+    updateStatusBar(`Cannot play: ${track.name}`);
+  }
+}
+
+// Alternative loading method using ArrayBuffer for problematic cases
+// This reads the file content and creates a fresh Blob with explicit MIME type
+async function loadTrackWithArrayBuffer(track) {
+  if (!track.file) {
+    console.error('[Mobile] No File object available for ArrayBuffer loading');
+    return;
+  }
+
+  try {
+    console.log(`[Mobile] ArrayBuffer loading: ${track.name}`);
+
+    // Read file as ArrayBuffer (forces read of actual file content)
+    const arrayBuffer = await track.file.arrayBuffer();
+
+    // Use the file's actual type first, fallback to extension-based detection
+    const mimeType = track.file.type || getMimeType(track.fullName || track.file.name);
+    console.log(`[Mobile] Creating blob with MIME: ${mimeType}, size: ${arrayBuffer.byteLength}`);
+
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+
+    // Revoke old URL if exists
+    if (track.url && track.url.startsWith('blob:')) {
+      URL.revokeObjectURL(track.url);
+    }
+
+    // Create new blob URL
+    track.url = URL.createObjectURL(blob);
+
+    // Load with new URL
+    audioState.audioElement.src = track.url;
+    await audioState.audioElement.load();
+
+    console.log(`[Mobile] ArrayBuffer method succeeded for: ${track.name}`);
+    updateStatusBar(`Loaded: ${track.name}`);
+
+    // Auto-play if was playing before
+    if (audioState.isPlaying) {
+      await audioState.audioElement.play();
+    }
+  } catch (error) {
+    console.error('[Mobile] ArrayBuffer loading failed:', error);
+    // Don't update status bar here - let tryFallbackLoading handle the next attempt
+  }
+}
+
+// Last resort: Load audio as Data URL (base64)
+// WARNING: This can cause memory issues with large files
+async function loadTrackWithDataURL(track) {
+  if (!track.file) {
+    console.error('[Mobile] No File object available for DataURL loading');
+    return;
+  }
+
+  try {
+    console.log(`[Mobile] DataURL loading (last resort): ${track.name}`);
+
+    const dataURL = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(track.file);
+    });
+
+    // Revoke old blob URL if exists (data URLs don't need revoking)
+    if (track.url && track.url.startsWith('blob:')) {
+      URL.revokeObjectURL(track.url);
+    }
+
+    // Use data URL directly
+    track.url = dataURL;
+    audioState.audioElement.src = dataURL;
+    await audioState.audioElement.load();
+
+    console.log(`[Mobile] DataURL method succeeded for: ${track.name}`);
+    updateStatusBar(`Loaded: ${track.name}`);
+
+    // Auto-play if was playing before
+    if (audioState.isPlaying) {
+      await audioState.audioElement.play();
+    }
+  } catch (error) {
+    console.error('[Mobile] DataURL loading failed:', error);
+    updateStatusBar(`Cannot play: ${track.name}`);
+  }
+}
+
+// Get MIME type from filename
+function getMimeType(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  const mimeTypes = {
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'ogg': 'audio/ogg',
+    'flac': 'audio/flac',
+    'aac': 'audio/aac',
+    'm4a': 'audio/mp4',
+    'webm': 'audio/webm',
+    'opus': 'audio/opus',
+    'wma': 'audio/x-ms-wma',
+    '3gp': 'audio/3gpp',
+    'amr': 'audio/amr'
+  };
+  return mimeTypes[ext] || 'audio/*';
 }
 
 // ============================================================================
@@ -1085,8 +1322,74 @@ async function openFiles() {
   }
 }
 
+// Request storage permissions on Android (required for file picker to work)
+// This uses the Capacitor Filesystem plugin to request read/write permissions
+async function requestStoragePermissions() {
+  if (!isCapacitor) return true; // Not on Capacitor, no permissions needed
+
+  console.log('[Mobile] Checking storage permissions...');
+
+  try {
+    // Try using Capacitor Filesystem plugin for permission management
+    if (Filesystem) {
+      // Check current permission status
+      const permStatus = await Filesystem.checkPermissions();
+      console.log('[Mobile] Current permission status:', permStatus);
+
+      if (permStatus.publicStorage === 'granted') {
+        console.log('[Mobile] Storage permissions already granted');
+        return true;
+      }
+
+      // Request permissions
+      console.log('[Mobile] Requesting storage permissions...');
+      updateStatusBar('Requesting permissions...');
+      const result = await Filesystem.requestPermissions();
+      console.log('[Mobile] Permission request result:', result);
+
+      if (result.publicStorage === 'granted') {
+        console.log('[Mobile] Storage permissions granted');
+        return true;
+      } else {
+        console.warn('[Mobile] Storage permissions denied:', result.publicStorage);
+        updateStatusBar('Permission denied - please grant storage access');
+        return false;
+      }
+    } else {
+      console.log('[Mobile] Filesystem plugin not available, trying without explicit permission request');
+      return true; // Proceed anyway, file picker might still work
+    }
+  } catch (error) {
+    console.error('[Mobile] Error requesting permissions:', error);
+    // Don't block on permission errors - the file picker might still work
+    return true;
+  }
+}
+
 // Web/Mobile file picker using file input element
 async function openFilesWeb() {
+  // On Capacitor/Android, prefer native FilePicker to get proper file paths
+  // This avoids blob URL issues that cause MEDIA_ERR_SRC_NOT_SUPPORTED
+  if (isCapacitor && FilePicker) {
+    try {
+      console.log('[Mobile] Using native FilePicker plugin');
+      await openFilesNative();
+      return;
+    } catch (error) {
+      console.error('[Mobile] Native FilePicker failed, falling back to HTML input:', error);
+      // Fall through to HTML input method
+    }
+  }
+
+  // On Capacitor/Android, request storage permissions first (for HTML input fallback)
+  if (isCapacitor) {
+    const permissionGranted = await requestStoragePermissions();
+    if (!permissionGranted) {
+      console.log('[Mobile] Permissions not granted, but proceeding with file picker anyway');
+      // Don't return early - the file picker might still trigger a permission prompt
+    }
+  }
+
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -1097,18 +1400,41 @@ async function openFilesWeb() {
     input.addEventListener('change', async (e) => {
       const files = Array.from(e.target.files);
       if (files.length > 0) {
-        const audioFiles = files.map((file, index) => ({
-          name: file.name.replace(/\.[^/.]+$/, ''),
-          fullName: file.name,
-          file: file,  // Store the File object for mobile
-          url: URL.createObjectURL(file)  // Create blob URL
-        }));
+        // Clean up old blob URLs to prevent memory leaks
+        cleanupBlobUrls();
+
+        const audioFiles = files.map((file, index) => {
+          // IMPORTANT: Use URL.createObjectURL directly on the File object
+          // File is already a Blob subclass - wrapping it in new Blob() can cause
+          // MEDIA_ERR_SRC_NOT_SUPPORTED on Android WebView
+          const url = URL.createObjectURL(file);
+
+          // Use file's actual MIME type, fallback to extension-based detection
+          const actualType = file.type || getMimeType(file.name);
+
+          console.log(`[Mobile] Loaded file: ${file.name}, size: ${file.size}, actualType: ${actualType}, reportedType: ${file.type}, url: ${url.substring(0, 50)}...`);
+
+          return {
+            name: file.name.replace(/\.[^/.]+$/, ''),
+            fullName: file.name,
+            file: file,  // Store the File object for fallback loading
+            url: url,    // Blob URL for audio element (created directly from File)
+            mimeType: actualType,  // Store the actual MIME type
+            _retryCount: 0  // Track retry attempts (0 = direct, 1 = arraybuffer, 2 = dataurl)
+          };
+        });
 
         audioState.folderPath = null;
         audioState.audioFiles = audioFiles;
         audioState.currentTrackIndex = 0;
-        await loadTrack(0);
-        updateStatusBar(`Loaded ${audioFiles.length} tracks`);
+
+        try {
+          await loadTrack(0);
+          updateStatusBar(`Loaded ${audioFiles.length} tracks`);
+        } catch (error) {
+          console.error('Error loading first track:', error);
+          updateStatusBar(`Error loading track: ${error.message}`);
+        }
       }
       document.body.removeChild(input);
       resolve();
@@ -1122,6 +1448,90 @@ async function openFilesWeb() {
     document.body.appendChild(input);
     input.click();
   });
+}
+
+// Native file picker using @capawesome/capacitor-file-picker
+// This returns native file paths which can be converted to web-accessible URLs
+// Avoids blob URL issues that cause MEDIA_ERR_SRC_NOT_SUPPORTED on Android WebView
+async function openFilesNative() {
+  console.log('[Mobile] Opening native file picker...');
+  updateStatusBar('Opening file picker...');
+
+  try {
+    // Request permissions first
+    await requestStoragePermissions();
+
+    // Pick audio files using native file picker
+    const result = await FilePicker.pickFiles({
+      types: ['audio/*'],
+      multiple: true,
+      readData: false  // Don't read file content into memory - we just need paths
+    });
+
+    console.log('[Mobile] FilePicker result:', result);
+
+    if (result && result.files && result.files.length > 0) {
+      // Clean up old URLs
+      cleanupBlobUrls();
+
+      const audioFiles = result.files.map((file) => {
+        // Convert native path to web-accessible URL using Capacitor.convertFileSrc()
+        // This is the key fix - avoids blob URLs which don't work on Android WebView
+        let url = null;
+        if (file.path && window.Capacitor && window.Capacitor.convertFileSrc) {
+          url = window.Capacitor.convertFileSrc(file.path);
+          console.log(`[Mobile] Converted path: ${file.path} -> ${url}`);
+        }
+
+        const actualType = file.mimeType || getMimeType(file.name);
+
+        console.log(`[Mobile] Native file: ${file.name}, path: ${file.path}, mimeType: ${actualType}, webUrl: ${url}`);
+
+        return {
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          fullName: file.name,
+          path: file.path,      // Native file path (Android/iOS)
+          url: url,             // Web-accessible URL via convertFileSrc
+          mimeType: actualType,
+          size: file.size,
+          _retryCount: 0,
+          _isNativePath: true   // Flag to indicate this uses native path, not blob URL
+        };
+      });
+
+      audioState.folderPath = null;
+      audioState.audioFiles = audioFiles;
+      audioState.currentTrackIndex = 0;
+
+      await loadTrack(0);
+      updateStatusBar(`Loaded ${audioFiles.length} tracks`);
+    } else {
+      console.log('[Mobile] No files selected');
+      updateStatusBar('No files selected');
+    }
+  } catch (error) {
+    console.error('[Mobile] FilePicker error:', error);
+    updateStatusBar(`Error: ${error.message}`);
+    throw error; // Re-throw so caller can fall back to HTML input
+  }
+}
+
+// Clean up old blob URLs to prevent memory leaks
+// Only revokes blob: URLs, not URLs from convertFileSrc (which start with http://)
+function cleanupBlobUrls() {
+  if (audioState.audioFiles && audioState.audioFiles.length > 0) {
+    audioState.audioFiles.forEach(track => {
+      // Only revoke blob URLs - native path URLs (from convertFileSrc) don't need revoking
+      if (track.url && track.url.startsWith('blob:') && !track._isNativePath) {
+        try {
+          URL.revokeObjectURL(track.url);
+          console.log(`[Mobile] Revoked blob URL for: ${track.name}`);
+        } catch (e) {
+          // Ignore errors when revoking
+        }
+      }
+    });
+  }
 }
 
 // ============================================================================
