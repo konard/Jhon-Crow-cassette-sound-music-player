@@ -15,6 +15,9 @@ let ScreenOrientation = null;
 // Filesystem API for permission management (Capacitor)
 let Filesystem = null;
 
+// File Picker API for native file selection (Capacitor - resolves Android blob URL issues)
+let FilePicker = null;
+
 // Apply mobile class to body if on mobile platform
 if (isMobile || isCapacitor) {
   document.addEventListener('DOMContentLoaded', () => {
@@ -25,6 +28,7 @@ if (isMobile || isCapacitor) {
   if (isCapacitor && window.Capacitor.Plugins) {
     ScreenOrientation = window.Capacitor.Plugins.ScreenOrientation;
     Filesystem = window.Capacitor.Plugins.Filesystem;
+    FilePicker = window.Capacitor.Plugins.FilePicker;
   }
 }
 
@@ -923,15 +927,26 @@ async function loadTrack(index) {
 
   // Load audio - use appropriate source based on platform
   try {
-    if (track.url) {
-      // Web/Mobile: use blob URL
+    if (track._isNativePath && track.url) {
+      // Native path (from Capacitor FilePicker): URL already converted via convertFileSrc
+      // This is the most reliable method for Android - avoids blob URL issues
+      console.log(`[Mobile] Loading with native path: ${track.name}, URL: ${track.url}`);
+      audioState.audioElement.src = track.url;
+    } else if (track.url) {
+      // Web/Mobile: use blob URL (fallback when native picker not available)
       if (isMobile || isCapacitor) {
-        console.log(`[Mobile] Loading track: ${track.name}, URL type: ${track.url.substring(0, 20)}..., retryCount: ${track._retryCount}`);
+        console.log(`[Mobile] Loading with blob URL: ${track.name}, URL: ${track.url.substring(0, 50)}..., retryCount: ${track._retryCount}`);
       }
       audioState.audioElement.src = track.url;
-    } else if (track.path) {
+    } else if (track.path && isElectron) {
       // Electron: use file:// URL
       audioState.audioElement.src = 'file://' + track.path;
+    } else if (track.path && isCapacitor && window.Capacitor && window.Capacitor.convertFileSrc) {
+      // Capacitor with native path but URL not yet converted
+      console.log(`[Mobile] Converting native path: ${track.path}`);
+      track.url = window.Capacitor.convertFileSrc(track.path);
+      track._isNativePath = true;
+      audioState.audioElement.src = track.url;
     } else if (track.file) {
       // Fallback: create blob URL from File object if URL is missing
       // Use createObjectURL directly on File (don't wrap in new Blob)
@@ -943,15 +958,19 @@ async function loadTrack(index) {
     await audioState.audioElement.load();
 
     if (isMobile || isCapacitor) {
-      console.log(`[Mobile] Track loaded successfully: ${track.name}`);
+      console.log(`[Mobile] Track loaded successfully: ${track.name}, isNativePath: ${track._isNativePath}`);
     }
   } catch (error) {
     console.error(`Error loading track ${track.name}:`, error);
     updateStatusBar(`Error: ${error.message}`);
 
-    // On mobile, try fallback methods
-    if ((isMobile || isCapacitor) && track.file) {
+    // On mobile, try fallback methods (only if not using native path - native paths don't have File objects)
+    if ((isMobile || isCapacitor) && track.file && !track._isNativePath) {
       await tryFallbackLoading(track);
+    } else if (track._isNativePath) {
+      // Native path failed - this shouldn't happen normally
+      console.error(`[Mobile] Native path loading failed for: ${track.name}`);
+      updateStatusBar(`Cannot play: ${track.name}`);
     }
   }
 
@@ -1349,7 +1368,20 @@ async function requestStoragePermissions() {
 
 // Web/Mobile file picker using file input element
 async function openFilesWeb() {
-  // On Capacitor/Android, request storage permissions first
+  // On Capacitor/Android, prefer native FilePicker to get proper file paths
+  // This avoids blob URL issues that cause MEDIA_ERR_SRC_NOT_SUPPORTED
+  if (isCapacitor && FilePicker) {
+    try {
+      console.log('[Mobile] Using native FilePicker plugin');
+      await openFilesNative();
+      return;
+    } catch (error) {
+      console.error('[Mobile] Native FilePicker failed, falling back to HTML input:', error);
+      // Fall through to HTML input method
+    }
+  }
+
+  // On Capacitor/Android, request storage permissions first (for HTML input fallback)
   if (isCapacitor) {
     const permissionGranted = await requestStoragePermissions();
     if (!permissionGranted) {
@@ -1418,11 +1450,79 @@ async function openFilesWeb() {
   });
 }
 
+// Native file picker using @capawesome/capacitor-file-picker
+// This returns native file paths which can be converted to web-accessible URLs
+// Avoids blob URL issues that cause MEDIA_ERR_SRC_NOT_SUPPORTED on Android WebView
+async function openFilesNative() {
+  console.log('[Mobile] Opening native file picker...');
+  updateStatusBar('Opening file picker...');
+
+  try {
+    // Request permissions first
+    await requestStoragePermissions();
+
+    // Pick audio files using native file picker
+    const result = await FilePicker.pickFiles({
+      types: ['audio/*'],
+      multiple: true,
+      readData: false  // Don't read file content into memory - we just need paths
+    });
+
+    console.log('[Mobile] FilePicker result:', result);
+
+    if (result && result.files && result.files.length > 0) {
+      // Clean up old URLs
+      cleanupBlobUrls();
+
+      const audioFiles = result.files.map((file) => {
+        // Convert native path to web-accessible URL using Capacitor.convertFileSrc()
+        // This is the key fix - avoids blob URLs which don't work on Android WebView
+        let url = null;
+        if (file.path && window.Capacitor && window.Capacitor.convertFileSrc) {
+          url = window.Capacitor.convertFileSrc(file.path);
+          console.log(`[Mobile] Converted path: ${file.path} -> ${url}`);
+        }
+
+        const actualType = file.mimeType || getMimeType(file.name);
+
+        console.log(`[Mobile] Native file: ${file.name}, path: ${file.path}, mimeType: ${actualType}, webUrl: ${url}`);
+
+        return {
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          fullName: file.name,
+          path: file.path,      // Native file path (Android/iOS)
+          url: url,             // Web-accessible URL via convertFileSrc
+          mimeType: actualType,
+          size: file.size,
+          _retryCount: 0,
+          _isNativePath: true   // Flag to indicate this uses native path, not blob URL
+        };
+      });
+
+      audioState.folderPath = null;
+      audioState.audioFiles = audioFiles;
+      audioState.currentTrackIndex = 0;
+
+      await loadTrack(0);
+      updateStatusBar(`Loaded ${audioFiles.length} tracks`);
+    } else {
+      console.log('[Mobile] No files selected');
+      updateStatusBar('No files selected');
+    }
+  } catch (error) {
+    console.error('[Mobile] FilePicker error:', error);
+    updateStatusBar(`Error: ${error.message}`);
+    throw error; // Re-throw so caller can fall back to HTML input
+  }
+}
+
 // Clean up old blob URLs to prevent memory leaks
+// Only revokes blob: URLs, not URLs from convertFileSrc (which start with http://)
 function cleanupBlobUrls() {
   if (audioState.audioFiles && audioState.audioFiles.length > 0) {
     audioState.audioFiles.forEach(track => {
-      if (track.url && track.url.startsWith('blob:')) {
+      // Only revoke blob URLs - native path URLs (from convertFileSrc) don't need revoking
+      if (track.url && track.url.startsWith('blob:') && !track._isNativePath) {
         try {
           URL.revokeObjectURL(track.url);
           console.log(`[Mobile] Revoked blob URL for: ${track.name}`);
