@@ -74,6 +74,9 @@ const CONFIG = {
   },
   mobile: {
     autoRotate: false  // Default: locked to landscape
+  },
+  ui: {
+    showControlsHint: true  // Default: show controls hint
   }
 };
 
@@ -130,6 +133,9 @@ async function init() {
   // Apply loaded appearance settings
   updateBackgroundGradient();
 
+  // Apply loaded UI settings
+  updateControlsHintVisibility();
+
   // Set initial visibility for bottom captions based on window size
   updateBottomCaptionsVisibility();
 
@@ -165,6 +171,10 @@ async function loadSavedSettings() {
           CONFIG.appearance.gradientEndColor = settings.appearance.gradientEndColor ?? CONFIG.appearance.gradientEndColor;
           CONFIG.appearance.gradientAngle = settings.appearance.gradientAngle ?? CONFIG.appearance.gradientAngle;
           CONFIG.appearance.backgroundOpacity = settings.appearance.backgroundOpacity ?? CONFIG.appearance.backgroundOpacity;
+        }
+        // Apply UI settings
+        if (settings.ui) {
+          CONFIG.ui.showControlsHint = settings.ui.showControlsHint ?? CONFIG.ui.showControlsHint;
         }
         // Restore playback state (folder and track)
         if (settings.playback && settings.playback.folderPath) {
@@ -226,6 +236,9 @@ function saveCurrentSettings() {
           gradientEndColor: CONFIG.appearance.gradientEndColor,
           gradientAngle: CONFIG.appearance.gradientAngle,
           backgroundOpacity: CONFIG.appearance.backgroundOpacity
+        },
+        ui: {
+          showControlsHint: CONFIG.ui.showControlsHint
         },
         playback: {
           folderPath: audioState.folderPath,
@@ -319,7 +332,12 @@ function updateBottomCaptionsVisibility() {
   const isSmallHeight = window.innerHeight < captionThreshold;
 
   if (controlsHint) {
-    controlsHint.style.display = isSmallHeight ? 'none' : 'block';
+    // Respect user preference for controls hint visibility
+    if (!CONFIG.ui.showControlsHint) {
+      controlsHint.style.display = 'none';
+    } else {
+      controlsHint.style.display = isSmallHeight ? 'none' : 'block';
+    }
   }
   if (statusBar) {
     statusBar.style.display = isSmallHeight ? 'none' : 'block';
@@ -1600,6 +1618,18 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+// Update controls hint visibility based on current UI settings
+function updateControlsHintVisibility() {
+  const controlsHint = document.getElementById('controls-hint');
+  if (!controlsHint) return;
+
+  if (CONFIG.ui.showControlsHint) {
+    controlsHint.style.display = 'block';
+  } else {
+    controlsHint.style.display = 'none';
+  }
+}
+
 // ============================================================================
 // EVENT HANDLERS
 // ============================================================================
@@ -2141,6 +2171,9 @@ function syncSettingsUI() {
   if (isMobile || isCapacitor) {
     document.getElementById('checkbox-auto-rotate').checked = CONFIG.mobile.autoRotate;
   }
+
+  // Sync UI settings (controls hint visibility)
+  document.getElementById('checkbox-show-controls-hint').checked = CONFIG.ui.showControlsHint;
 }
 
 function setupSettingsEventListeners() {
@@ -2293,6 +2326,13 @@ function setupSettingsEventListeners() {
   document.getElementById('checkbox-auto-rotate').addEventListener('change', async (e) => {
     CONFIG.mobile.autoRotate = e.target.checked;
     await applyOrientationSetting();
+  });
+
+  // Show controls hint checkbox
+  document.getElementById('checkbox-show-controls-hint').addEventListener('change', (e) => {
+    CONFIG.ui.showControlsHint = e.target.checked;
+    updateControlsHintVisibility();
+    saveCurrentSettings();
   });
 
   // Appearance settings - Gradient enabled checkbox
