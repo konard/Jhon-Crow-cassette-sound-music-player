@@ -1,3 +1,5 @@
+d73d3a6 Remove #drag-region to fix button clicks blocked in small windows
+6bce906 Fix button clicks blocked by drag-region overlay in small windows
 4dee3d5 Revert "Initial commit with task details"
 07acdd3 Improve button hit detection with larger invisible collision boxes
 03b3ed7 Initial commit with task details
@@ -6,15 +8,3 @@ f06834e Update package-lock.json for @capawesome/capacitor-file-picker
 3ed0c5a Fix Android audio playback with native file picker and convertFileSrc
 ae1085b Update package-lock.json for @capacitor/filesystem
 19c7e35 Add Android runtime permission requests for storage access
-5591102 Fix Android audio MEDIA_ERR_SRC_NOT_SUPPORTED error with improved loading strategy
-15cdb80 Revert "Initial commit with task details"
-d42381f Fix mobile audio loading with enhanced error handling and fallback methods
-7f9a76b Initial commit with task details
-b4a0c17 Merge pull request #25 from konard/issue-24-c7d53c76a9e5
-d0b9984 Update package-lock.json with screen-orientation plugin
-75ded68 Fix Android file access permissions and add screen orientation control
-5c82481 Revert "Initial commit with task details"
-74cd5d8 Add mobile version support with Android APK builds
-773d0ba Initial commit with task details
-2ce936f Merge pull request #23 from konard/issue-22-b7ae8058bb20
-da9dcc5 Remove CLAUDE.md configuration file
