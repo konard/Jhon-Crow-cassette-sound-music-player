@@ -578,6 +578,19 @@ function createCassettePlayer() {
     button.userData.buttonType = btn.type;
     button.userData.isButton = true;
     buttonsGroup.add(button);
+
+    // Add larger invisible collision box for easier clicking/tapping
+    // Makes the clickable area extend above and below the visual button
+    const collisionBoxGeometry = new THREE.BoxGeometry(0.014, 0.012, 0.012);
+    const collisionBox = new THREE.Mesh(
+      collisionBoxGeometry,
+      new THREE.MeshBasicMaterial({ visible: false, transparent: true, opacity: 0 })
+    );
+    collisionBox.position.set(btn.x, buttonY + 0.002, buttonZ);
+    collisionBox.name = btn.name + 'Collision';
+    collisionBox.userData.buttonType = btn.type;
+    collisionBox.userData.isButton = true;
+    buttonsGroup.add(collisionBox);
   });
 
   // Play button has red dot
@@ -590,6 +603,18 @@ function createCassettePlayer() {
   playDot.userData.buttonType = 'play';
   playDot.userData.isButton = true;
   buttonsGroup.add(playDot);
+
+  // Add larger invisible collision box for the play dot too
+  const playDotCollisionGeometry = new THREE.BoxGeometry(0.014, 0.012, 0.012);
+  const playDotCollision = new THREE.Mesh(
+    playDotCollisionGeometry,
+    new THREE.MeshBasicMaterial({ visible: false, transparent: true, opacity: 0 })
+  );
+  playDotCollision.position.set(-buttonSpacing * 0.5, buttonY + 0.005, buttonZ);
+  playDotCollision.name = 'playDotCollision';
+  playDotCollision.userData.buttonType = 'play';
+  playDotCollision.userData.isButton = true;
+  buttonsGroup.add(playDotCollision);
 
   group.add(buttonsGroup);
   group.userData.buttonsGroup = buttonsGroup;
