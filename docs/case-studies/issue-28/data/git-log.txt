@@ -1,0 +1,10 @@
+d73d3a6 Remove #drag-region to fix button clicks blocked in small windows
+6bce906 Fix button clicks blocked by drag-region overlay in small windows
+4dee3d5 Revert "Initial commit with task details"
+07acdd3 Improve button hit detection with larger invisible collision boxes
+03b3ed7 Initial commit with task details
+3cfb7cc Merge pull request #29 from konard/issue-27-37418b82164d
+f06834e Update package-lock.json for @capawesome/capacitor-file-picker
+3ed0c5a Fix Android audio playback with native file picker and convertFileSrc
+ae1085b Update package-lock.json for @capacitor/filesystem
+19c7e35 Add Android runtime permission requests for storage access

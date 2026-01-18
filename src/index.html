@@ -34,6 +34,7 @@
       gap: 6px;
       z-index: 1000;
       -webkit-app-region: no-drag;
+      pointer-events: auto;  /* Ensure window control buttons are clickable */
     }
 
     .window-btn {
@@ -53,16 +54,18 @@
     #btn-maximize { background: #27c93f; }
     #btn-close { background: #ff5f56; }
 
-    /* Drag region */
-    #drag-region {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 40px;
-      -webkit-app-region: drag;
-      z-index: 999;
-    }
+    /* Drag region - REMOVED
+     * The #drag-region with -webkit-app-region: drag was causing button clicks to be blocked
+     * in small windows because the native drag region intercepts ALL mouse events at the OS level.
+     * CSS pointer-events: none does NOT help because -webkit-app-region operates at the
+     * native OS level, not the DOM/CSS level.
+     *
+     * Window dragging is now handled entirely via JavaScript in renderer.js:
+     * - onCanvasMouseDown/Move/Up handle mouse tracking
+     * - startWindowDrag() and moveWindow() IPC calls move the window
+     *
+     * See: https://github.com/electron/electron/issues/1354
+     */
 
     /* 3D Canvas */
     #canvas-container {
@@ -534,10 +537,7 @@
       display: none !important;
     }
 
-    /* Hide drag region on mobile (no window dragging) */
-    .mobile-platform #drag-region {
-      display: none !important;
-    }
+    /* Note: #drag-region was removed - window dragging now via JavaScript */
 
     /* Hide window options section on mobile (not applicable) */
     .mobile-platform #window-options-section {
@@ -564,7 +564,8 @@
 <body>
   <div id="app">
     <div id="background-gradient"></div>
-    <div id="drag-region"></div>
+    <!-- #drag-region removed - was blocking button clicks in small windows.
+         Window dragging is now handled via JavaScript (see renderer.js) -->
     <div id="window-controls">
       <button class="window-btn" id="btn-minimize" title="Minimize"></button>
       <button class="window-btn" id="btn-maximize" title="Maximize"></button>
