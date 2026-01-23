@@ -976,6 +976,11 @@ async function loadTrack(index) {
   // Update status bar
   updateStatusBar(`${index + 1}/${audioState.audioFiles.length}: ${track.name}`);
 
+  // Update playlist if it's open
+  if (playlistOpen) {
+    updatePlaylistTracks();
+  }
+
   // Load audio - use appropriate source based on platform
   try {
     if (track._isNativePath && track.url) {
