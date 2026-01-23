@@ -351,9 +351,10 @@ function updateBottomCaptionsVisibility() {
     statusBar.style.display = isSmallHeight ? 'none' : 'block';
   }
 
-  // Hide window controls when window is very small (height or width < 120px)
+  // Hide window controls when window is very small (height < 120px or width < 300px)
   const controlsThreshold = 120;
-  const isVerySmall = window.innerHeight < controlsThreshold || window.innerWidth < controlsThreshold;
+  const widthThreshold = 300;
+  const isVerySmall = window.innerHeight < controlsThreshold || window.innerWidth < widthThreshold;
 
   if (windowControls) {
     windowControls.style.display = isVerySmall ? 'none' : 'flex';
