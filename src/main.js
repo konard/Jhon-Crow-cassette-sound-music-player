@@ -29,6 +29,9 @@ const DEFAULT_SETTINGS = {
   window: {
     alwaysOnTop: false
   },
+  ui: {
+    showControlsHint: true
+  },
   playback: {
     folderPath: null,
     currentTrackIndex: 0
@@ -46,6 +49,7 @@ function loadSettings() {
         audio: { ...DEFAULT_SETTINGS.audio, ...loaded.audio },
         appearance: { ...DEFAULT_SETTINGS.appearance, ...loaded.appearance },
         window: { ...DEFAULT_SETTINGS.window, ...loaded.window },
+        ui: { ...DEFAULT_SETTINGS.ui, ...loaded.ui },
         playback: { ...DEFAULT_SETTINGS.playback, ...loaded.playback }
       };
     }
@@ -400,8 +404,19 @@ ipcMain.handle('get-settings', () => {
 });
 
 ipcMain.on('save-settings', (event, settings) => {
-  currentSettings = settings;
-  saveSettings(settings);
+  // Merge incoming settings with current settings
+  // IMPORTANT: Preserve the window settings from currentSettings to avoid race conditions
+  // The window.alwaysOnTop value is managed by the set-always-on-top handler, which may have
+  // updated it after the renderer queried getAlwaysOnTop() but before this handler runs.
+  // By preserving the window section from currentSettings, we ensure the most recent value is kept.
+  currentSettings = {
+    audio: { ...currentSettings?.audio, ...settings.audio },
+    appearance: { ...currentSettings?.appearance, ...settings.appearance },
+    window: { ...currentSettings?.window },  // Preserve window settings from main process
+    ui: { ...currentSettings?.ui, ...settings.ui },
+    playback: { ...currentSettings?.playback, ...settings.playback }
+  };
+  saveSettings(currentSettings);
 });
 
 // Update always-on-top setting and save
