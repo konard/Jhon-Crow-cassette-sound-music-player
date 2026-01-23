@@ -215,11 +215,17 @@ async function restorePlaybackState(playbackSettings) {
 }
 
 // Save current settings to persistent storage (Electron only)
-function saveCurrentSettings() {
+async function saveCurrentSettings() {
   if (!isElectron) return;
 
   try {
     if (window.electronAPI.saveSettings) {
+      // Get current always-on-top state from main process to preserve it
+      let alwaysOnTop = false;
+      if (window.electronAPI.getAlwaysOnTop) {
+        alwaysOnTop = await window.electronAPI.getAlwaysOnTop();
+      }
+
       const settings = {
         audio: {
           volume: CONFIG.audio.volume,
@@ -236,6 +242,9 @@ function saveCurrentSettings() {
           gradientEndColor: CONFIG.appearance.gradientEndColor,
           gradientAngle: CONFIG.appearance.gradientAngle,
           backgroundOpacity: CONFIG.appearance.backgroundOpacity
+        },
+        window: {
+          alwaysOnTop: alwaysOnTop
         },
         ui: {
           showControlsHint: CONFIG.ui.showControlsHint
