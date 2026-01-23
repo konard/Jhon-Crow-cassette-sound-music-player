@@ -559,6 +559,176 @@
     .mobile-platform #mobile-orientation-section {
       display: block !important;
     }
+
+    /* Playlist Panel */
+    #playlist-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 400;
+    }
+
+    #playlist-overlay.visible {
+      display: flex;
+    }
+
+    #playlist-panel {
+      background: linear-gradient(180deg, #2a2a3e 0%, #1a1a2e 100%);
+      border: 1px solid #4a4a6a;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 360px;
+      max-height: 85%;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .playlist-header {
+      background: linear-gradient(180deg, #3a3a5a 0%, #2a2a4a 100%);
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #4a4a6a;
+      flex-shrink: 0;
+    }
+
+    .playlist-header h2 {
+      color: #7cfc7c;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 1px;
+      margin: 0;
+    }
+
+    .playlist-close {
+      background: none;
+      border: none;
+      color: #ff5f56;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      transition: opacity 0.2s;
+    }
+
+    .playlist-close:hover {
+      opacity: 0.7;
+    }
+
+    .playlist-controls {
+      padding: 10px 14px;
+      border-bottom: 1px solid #3a3a5a;
+      flex-shrink: 0;
+    }
+
+    .playlist-shuffle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .playlist-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .playlist-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .playlist-content::-webkit-scrollbar-track {
+      background: #1a1a2e;
+    }
+
+    .playlist-content::-webkit-scrollbar-thumb {
+      background: #4a4a6a;
+      border-radius: 3px;
+    }
+
+    .playlist-track {
+      padding: 8px 10px;
+      margin-bottom: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .playlist-track:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .playlist-track.active {
+      background: rgba(124, 252, 124, 0.2);
+      border: 1px solid #7cfc7c;
+    }
+
+    .playlist-track-number {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 10px;
+      min-width: 20px;
+      text-align: right;
+    }
+
+    .playlist-track.active .playlist-track-number {
+      color: #7cfc7c;
+    }
+
+    .playlist-track-name {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 11px;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .playlist-track.active .playlist-track-name {
+      color: #7cfc7c;
+      font-weight: 500;
+    }
+
+    .playlist-empty {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 11px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    /* Mobile adjustments for playlist */
+    @media (max-width: 600px), (pointer: coarse) {
+      #playlist-panel {
+        width: 95%;
+        max-width: 400px;
+        max-height: 90%;
+      }
+
+      .playlist-track {
+        padding: 12px 10px;
+        font-size: 13px;
+      }
+
+      .playlist-track-name {
+        font-size: 13px;
+      }
+
+      .playlist-track-number {
+        font-size: 11px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -777,6 +947,28 @@
             <div class="section-title">Version</div>
             <p class="info-text">v1.4.1</p>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Playlist Panel (opened by middle-click on cassette) -->
+    <div id="playlist-overlay">
+      <div id="playlist-panel">
+        <div class="playlist-header">
+          <h2>PLAYLIST</h2>
+          <button class="playlist-close" id="playlist-close" title="Close">&times;</button>
+        </div>
+        <div class="playlist-controls">
+          <div class="playlist-shuffle">
+            <label class="toggle-label">
+              <input type="checkbox" id="checkbox-shuffle" class="toggle-checkbox">
+              <span class="toggle-switch"></span>
+              <span class="toggle-text">Shuffle</span>
+            </label>
+          </div>
+        </div>
+        <div class="playlist-content" id="playlist-tracks">
+          <div class="playlist-empty">No tracks loaded</div>
         </div>
       </div>
     </div>

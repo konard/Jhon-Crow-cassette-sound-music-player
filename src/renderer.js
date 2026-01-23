@@ -77,6 +77,9 @@ const CONFIG = {
   },
   ui: {
     showControlsHint: true  // Default: show controls hint
+  },
+  playback: {
+    shuffleEnabled: false  // Default: shuffle disabled
   }
 };
 
@@ -176,6 +179,10 @@ async function loadSavedSettings() {
         if (settings.ui) {
           CONFIG.ui.showControlsHint = settings.ui.showControlsHint ?? CONFIG.ui.showControlsHint;
         }
+        // Apply playback settings
+        if (settings.playback) {
+          CONFIG.playback.shuffleEnabled = settings.playback.shuffleEnabled ?? CONFIG.playback.shuffleEnabled;
+        }
         // Restore playback state (folder and track)
         if (settings.playback && settings.playback.folderPath) {
           await restorePlaybackState(settings.playback);
@@ -242,7 +249,8 @@ function saveCurrentSettings() {
         },
         playback: {
           folderPath: audioState.folderPath,
-          currentTrackIndex: audioState.currentTrackIndex
+          currentTrackIndex: audioState.currentTrackIndex,
+          shuffleEnabled: CONFIG.playback.shuffleEnabled
         }
       };
       window.electronAPI.saveSettings(settings);
@@ -1098,7 +1106,19 @@ function pause() {
 }
 
 async function nextTrack() {
-  await loadTrack(audioState.currentTrackIndex + 1);
+  let nextIndex;
+
+  if (CONFIG.playback.shuffleEnabled && audioState.audioFiles.length > 1) {
+    // Shuffle: pick random track (different from current)
+    do {
+      nextIndex = Math.floor(Math.random() * audioState.audioFiles.length);
+    } while (nextIndex === audioState.currentTrackIndex && audioState.audioFiles.length > 1);
+  } else {
+    // Sequential: next track in order
+    nextIndex = audioState.currentTrackIndex + 1;
+  }
+
+  await loadTrack(nextIndex);
   if (audioState.isPlaying) {
     await audioState.audioElement.play();
   }
@@ -1662,6 +1682,14 @@ function setupEventListeners() {
   // Right-click to open settings panel (desktop)
   canvas.addEventListener('contextmenu', onContextMenu);
 
+  // Middle-click to open playlist panel
+  canvas.addEventListener('auxclick', (e) => {
+    if (e.button === 1) {  // Middle mouse button
+      e.preventDefault();
+      togglePlaylist();
+    }
+  });
+
   // Double-click to open folder (desktop)
   canvas.addEventListener('dblclick', async () => {
     await openFolder();
@@ -1702,6 +1730,9 @@ function setupEventListeners() {
 
   // Setup settings panel event listeners
   setupSettingsEventListeners();
+
+  // Setup playlist panel event listeners
+  setupPlaylistEventListeners();
 
   // Listen for tray toggle play event (Electron only)
   if (isElectron && window.electronAPI.onTrayTogglePlay) {
@@ -2126,6 +2157,92 @@ function toggleSettings() {
   } else {
     openSettings();
   }
+}
+
+// ============================================================================
+// PLAYLIST PANEL FUNCTIONS
+// ============================================================================
+let playlistOpen = false;
+
+function openPlaylist() {
+  const overlay = document.getElementById('playlist-overlay');
+  overlay.classList.add('visible');
+  playlistOpen = true;
+  updatePlaylistTracks();
+}
+
+function closePlaylist() {
+  const overlay = document.getElementById('playlist-overlay');
+  overlay.classList.remove('visible');
+  playlistOpen = false;
+}
+
+function togglePlaylist() {
+  if (playlistOpen) {
+    closePlaylist();
+  } else {
+    openPlaylist();
+  }
+}
+
+function updatePlaylistTracks() {
+  const container = document.getElementById('playlist-tracks');
+
+  if (audioState.audioFiles.length === 0) {
+    container.innerHTML = '<div class="playlist-empty">No tracks loaded</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+
+  audioState.audioFiles.forEach((track, index) => {
+    const trackElement = document.createElement('div');
+    trackElement.className = 'playlist-track';
+    if (index === audioState.currentTrackIndex) {
+      trackElement.classList.add('active');
+    }
+
+    const trackNumber = document.createElement('div');
+    trackNumber.className = 'playlist-track-number';
+    trackNumber.textContent = (index + 1).toString();
+
+    const trackName = document.createElement('div');
+    trackName.className = 'playlist-track-name';
+    trackName.textContent = track.name;
+
+    trackElement.appendChild(trackNumber);
+    trackElement.appendChild(trackName);
+
+    trackElement.addEventListener('click', async () => {
+      await loadTrack(index);
+      if (audioState.isPlaying) {
+        await audioState.audioElement.play();
+      }
+      updatePlaylistTracks();
+    });
+
+    container.appendChild(trackElement);
+  });
+}
+
+function setupPlaylistEventListeners() {
+  // Close button
+  document.getElementById('playlist-close').addEventListener('click', closePlaylist);
+
+  // Close on overlay click (but not on panel itself)
+  document.getElementById('playlist-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'playlist-overlay') {
+      closePlaylist();
+    }
+  });
+
+  // Shuffle toggle
+  const shuffleCheckbox = document.getElementById('checkbox-shuffle');
+  shuffleCheckbox.checked = CONFIG.playback.shuffleEnabled;
+  shuffleCheckbox.addEventListener('change', (e) => {
+    CONFIG.playback.shuffleEnabled = e.target.checked;
+    saveCurrentSettings();
+  });
 }
 
 function syncSettingsUI() {
