@@ -1,0 +1,30 @@
+6e2aa3d Merge pull request #33 from konard/issue-32-00941bf6651d
+52e96f4 Revert "Initial commit with task details"
+cf8b822 Update playlist when track changes
+65cbe06 Add playlist panel with shuffle functionality
+5f81c9e Revert "Initial commit with task details"
+7b5218e Add test to verify always-on-top persistence
+8032d7f Initial commit with task details
+35ebc74 Initial commit with task details
+37b2378 Merge pull request #31 from konard/issue-26-91ec8ed07db2
+6597f91 Revert "Initial commit with task details"
+8a62ec7 Add option to hide controls hint in settings
+a962f3d Initial commit with task details
+2a0ca3c Merge pull request #30 from konard/issue-28-1e203aee9673
+44cb16b Update case study documentation with complete investigation
+d73d3a6 Remove #drag-region to fix button clicks blocked in small windows
+6bce906 Fix button clicks blocked by drag-region overlay in small windows
+4dee3d5 Revert "Initial commit with task details"
+07acdd3 Improve button hit detection with larger invisible collision boxes
+03b3ed7 Initial commit with task details
+3cfb7cc Merge pull request #29 from konard/issue-27-37418b82164d
+f06834e Update package-lock.json for @capawesome/capacitor-file-picker
+3ed0c5a Fix Android audio playback with native file picker and convertFileSrc
+ae1085b Update package-lock.json for @capacitor/filesystem
+19c7e35 Add Android runtime permission requests for storage access
+5591102 Fix Android audio MEDIA_ERR_SRC_NOT_SUPPORTED error with improved loading strategy
+15cdb80 Revert "Initial commit with task details"
+d42381f Fix mobile audio loading with enhanced error handling and fallback methods
+7f9a76b Initial commit with task details
+b4a0c17 Merge pull request #25 from konard/issue-24-c7d53c76a9e5
+d0b9984 Update package-lock.json with screen-orientation plugin
