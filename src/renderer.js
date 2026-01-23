@@ -79,7 +79,8 @@ const CONFIG = {
     showControlsHint: true  // Default: show controls hint
   },
   playback: {
-    shuffleEnabled: false  // Default: shuffle disabled
+    shuffleEnabled: false,  // Default: shuffle disabled
+    shuffledPlaylist: []  // Persistent shuffled order
   }
 };
 
@@ -100,7 +101,9 @@ let audioState = {
   isPlaying: false,
   currentTrackIndex: 0,
   audioFiles: [],
-  folderPath: null
+  folderPath: null,
+  trackHistory: [],  // History of played tracks for prev button
+  shuffledPlaylist: []  // Persistent shuffled order when shuffle is enabled
 };
 
 // Animation state
@@ -182,6 +185,7 @@ async function loadSavedSettings() {
         // Apply playback settings
         if (settings.playback) {
           CONFIG.playback.shuffleEnabled = settings.playback.shuffleEnabled ?? CONFIG.playback.shuffleEnabled;
+          CONFIG.playback.shuffledPlaylist = settings.playback.shuffledPlaylist ?? CONFIG.playback.shuffledPlaylist;
         }
         // Restore playback state (folder and track)
         if (settings.playback && settings.playback.folderPath) {
@@ -215,6 +219,11 @@ async function restorePlaybackState(playbackSettings) {
       const track = audioState.audioFiles[trackIndex];
       updateScreenText(track.name);
       updateStatusBar(`Restored: ${audioState.audioFiles.length} tracks`);
+
+      // Restore shuffled playlist if it exists and matches the current audio files
+      if (playbackSettings.shuffledPlaylist && playbackSettings.shuffledPlaylist.length === audioState.audioFiles.length) {
+        audioState.shuffledPlaylist = playbackSettings.shuffledPlaylist;
+      }
     }
   } catch (error) {
     console.error('Error restoring playback state:', error);
@@ -250,7 +259,8 @@ function saveCurrentSettings() {
         playback: {
           folderPath: audioState.folderPath,
           currentTrackIndex: audioState.currentTrackIndex,
-          shuffleEnabled: CONFIG.playback.shuffleEnabled
+          shuffleEnabled: CONFIG.playback.shuffleEnabled,
+          shuffledPlaylist: audioState.shuffledPlaylist
         }
       };
       window.electronAPI.saveSettings(settings);
@@ -956,11 +966,20 @@ function toggleAudioEffects(enabled) {
 // ============================================================================
 // PLAYBACK CONTROLS
 // ============================================================================
-async function loadTrack(index) {
+async function loadTrack(index, addToHistory = true) {
   if (audioState.audioFiles.length === 0) return;
 
   if (index < 0) index = audioState.audioFiles.length - 1;
   if (index >= audioState.audioFiles.length) index = 0;
+
+  // Add current track to history before switching (for prev button)
+  if (addToHistory && audioState.currentTrackIndex !== index) {
+    audioState.trackHistory.push(audioState.currentTrackIndex);
+    // Limit history to last 50 tracks to prevent memory issues
+    if (audioState.trackHistory.length > 50) {
+      audioState.trackHistory.shift();
+    }
+  }
 
   audioState.currentTrackIndex = index;
   const track = audioState.audioFiles[index];
@@ -1115,13 +1134,33 @@ async function nextTrack() {
   let nextIndex;
 
   if (CONFIG.playback.shuffleEnabled && audioState.audioFiles.length > 1) {
-    // Shuffle: pick random track (different from current)
-    do {
-      nextIndex = Math.floor(Math.random() * audioState.audioFiles.length);
-    } while (nextIndex === audioState.currentTrackIndex && audioState.audioFiles.length > 1);
+    // Shuffle: use persistent shuffled playlist
+    // Create shuffled playlist if it doesn't exist or doesn't match current files
+    if (audioState.shuffledPlaylist.length !== audioState.audioFiles.length) {
+      // Create a shuffled playlist (array of indices)
+      audioState.shuffledPlaylist = Array.from({ length: audioState.audioFiles.length }, (_, i) => i);
+      // Fisher-Yates shuffle
+      for (let i = audioState.shuffledPlaylist.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [audioState.shuffledPlaylist[i], audioState.shuffledPlaylist[j]] = [audioState.shuffledPlaylist[j], audioState.shuffledPlaylist[i]];
+      }
+      saveCurrentSettings();
+    }
+
+    // Find current position in shuffled playlist
+    const currentPosInPlaylist = audioState.shuffledPlaylist.indexOf(audioState.currentTrackIndex);
+
+    if (currentPosInPlaylist === -1) {
+      // Current track not in shuffled playlist (shouldn't happen), go to first
+      nextIndex = audioState.shuffledPlaylist[0];
+    } else {
+      // Get next track in shuffled order, wrap around to beginning
+      const nextPosInPlaylist = (currentPosInPlaylist + 1) % audioState.shuffledPlaylist.length;
+      nextIndex = audioState.shuffledPlaylist[nextPosInPlaylist];
+    }
   } else {
-    // Sequential: next track in order
-    nextIndex = audioState.currentTrackIndex + 1;
+    // Sequential: next track in order, wrap around
+    nextIndex = (audioState.currentTrackIndex + 1) % audioState.audioFiles.length;
   }
 
   await loadTrack(nextIndex);
@@ -1135,7 +1174,31 @@ async function prevTrack() {
   if (audioState.audioElement.currentTime > 3) {
     audioState.audioElement.currentTime = 0;
   } else {
-    await loadTrack(audioState.currentTrackIndex - 1);
+    // Use track history for previous track
+    if (audioState.trackHistory.length > 0) {
+      const prevIndex = audioState.trackHistory.pop();
+      // Don't add to history when going back
+      await loadTrack(prevIndex, false);
+    } else {
+      // No history, go to previous in list/shuffled order
+      let prevIndex;
+      if (CONFIG.playback.shuffleEnabled && audioState.shuffledPlaylist.length === audioState.audioFiles.length) {
+        // Find current position in shuffled playlist
+        const currentPosInPlaylist = audioState.shuffledPlaylist.indexOf(audioState.currentTrackIndex);
+        if (currentPosInPlaylist > 0) {
+          prevIndex = audioState.shuffledPlaylist[currentPosInPlaylist - 1];
+        } else {
+          // Wrap to end of shuffled playlist
+          prevIndex = audioState.shuffledPlaylist[audioState.shuffledPlaylist.length - 1];
+        }
+      } else {
+        // Sequential mode: simple previous
+        prevIndex = audioState.currentTrackIndex - 1;
+        if (prevIndex < 0) prevIndex = audioState.audioFiles.length - 1;
+      }
+      await loadTrack(prevIndex, false);
+    }
+
     if (audioState.isPlaying) {
       await audioState.audioElement.play();
     }
@@ -1355,6 +1418,8 @@ async function openFolder() {
         audioState.folderPath = result.folderPath;
         audioState.audioFiles = result.audioFiles;
         audioState.currentTrackIndex = 0;
+        audioState.trackHistory = [];  // Clear history when loading new folder
+        audioState.shuffledPlaylist = [];  // Clear shuffled playlist when loading new folder
         await loadTrack(0);
         updateStatusBar(`Loaded ${result.audioFiles.length} tracks`);
         // Save playback state for restoration on restart
@@ -1377,6 +1442,8 @@ async function openFiles() {
         audioState.folderPath = result.folderPath;
         audioState.audioFiles = result.audioFiles;
         audioState.currentTrackIndex = 0;
+        audioState.trackHistory = [];  // Clear history when loading new files
+        audioState.shuffledPlaylist = [];  // Clear shuffled playlist when loading new files
         await loadTrack(0);
         updateStatusBar(`Loaded ${result.audioFiles.length} tracks`);
         // Save playback state for restoration on restart
@@ -1496,6 +1563,8 @@ async function openFilesWeb() {
         audioState.folderPath = null;
         audioState.audioFiles = audioFiles;
         audioState.currentTrackIndex = 0;
+        audioState.trackHistory = [];  // Clear history when loading new files
+        audioState.shuffledPlaylist = [];  // Clear shuffled playlist when loading new files
 
         try {
           await loadTrack(0);
@@ -1571,6 +1640,8 @@ async function openFilesNative() {
       audioState.folderPath = null;
       audioState.audioFiles = audioFiles;
       audioState.currentTrackIndex = 0;
+      audioState.trackHistory = [];  // Clear history when loading new files
+      audioState.shuffledPlaylist = [];  // Clear shuffled playlist when loading new files
 
       await loadTrack(0);
       updateStatusBar(`Loaded ${audioFiles.length} tracks`);
@@ -2247,6 +2318,10 @@ function setupPlaylistEventListeners() {
   shuffleCheckbox.checked = CONFIG.playback.shuffleEnabled;
   shuffleCheckbox.addEventListener('change', (e) => {
     CONFIG.playback.shuffleEnabled = e.target.checked;
+    // Clear shuffled playlist when toggling shuffle off
+    if (!e.target.checked) {
+      audioState.shuffledPlaylist = [];
+    }
     saveCurrentSettings();
   });
 }

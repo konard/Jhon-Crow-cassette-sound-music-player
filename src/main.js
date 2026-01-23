@@ -31,7 +31,9 @@ const DEFAULT_SETTINGS = {
   },
   playback: {
     folderPath: null,
-    currentTrackIndex: 0
+    currentTrackIndex: 0,
+    shuffleEnabled: false,
+    shuffledPlaylist: []
   }
 };
 
