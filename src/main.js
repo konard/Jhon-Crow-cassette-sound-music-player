@@ -8,6 +8,15 @@ const fs = require('fs');
 // Settings file path in user data directory
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
 
+// Debug logging flag - set to true to enable verbose logging for Always on Top persistence
+const DEBUG_ALWAYS_ON_TOP = true;
+
+function debugLog(...args) {
+  if (DEBUG_ALWAYS_ON_TOP) {
+    console.log('[AlwaysOnTop]', ...args);
+  }
+}
+
 // Default settings
 const DEFAULT_SETTINGS = {
   audio: {
@@ -40,31 +49,45 @@ const DEFAULT_SETTINGS = {
 
 // Load settings from file
 function loadSettings() {
+  debugLog('loadSettings() called');
+  debugLog('Settings file path:', SETTINGS_FILE);
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
       const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+      debugLog('Settings file contents:', data);
       const loaded = JSON.parse(data);
+      debugLog('Parsed window settings:', JSON.stringify(loaded.window));
       // Merge with defaults to handle missing keys from older versions
-      return {
+      const merged = {
         audio: { ...DEFAULT_SETTINGS.audio, ...loaded.audio },
         appearance: { ...DEFAULT_SETTINGS.appearance, ...loaded.appearance },
         window: { ...DEFAULT_SETTINGS.window, ...loaded.window },
         ui: { ...DEFAULT_SETTINGS.ui, ...loaded.ui },
         playback: { ...DEFAULT_SETTINGS.playback, ...loaded.playback }
       };
+      debugLog('Merged window settings:', JSON.stringify(merged.window));
+      return merged;
+    } else {
+      debugLog('Settings file does not exist, using defaults');
     }
   } catch (error) {
     console.error('Error loading settings:', error);
+    debugLog('Error loading settings:', error.message);
   }
+  debugLog('Returning default settings, window:', JSON.stringify(DEFAULT_SETTINGS.window));
   return { ...DEFAULT_SETTINGS };
 }
 
 // Save settings to file
 function saveSettings(settings) {
+  debugLog('saveSettings() called');
+  debugLog('Saving window settings:', JSON.stringify(settings.window));
   try {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+    debugLog('Settings saved successfully to:', SETTINGS_FILE);
   } catch (error) {
     console.error('Error saving settings:', error);
+    debugLog('Error saving settings:', error.message);
   }
 }
 
@@ -213,14 +236,20 @@ function createWindow() {
 
 // Create window when Electron is ready
 app.whenReady().then(() => {
+  debugLog('App ready, loading settings...');
   // Load settings before creating window
   currentSettings = loadSettings();
   createWindow();
   createTray();
 
   // Apply saved always-on-top setting
+  debugLog('Checking always-on-top setting:', currentSettings.window.alwaysOnTop);
   if (currentSettings.window.alwaysOnTop && mainWindow) {
+    debugLog('Applying always-on-top: true');
     mainWindow.setAlwaysOnTop(true);
+    debugLog('Window isAlwaysOnTop after apply:', mainWindow.isAlwaysOnTop());
+  } else {
+    debugLog('Not applying always-on-top (value is falsy or no window)');
   }
 });
 
@@ -378,10 +407,9 @@ ipcMain.on('window-move', (event, deltaX, deltaY) => {
 
 // Always on top handler - get current state
 ipcMain.handle('get-always-on-top', () => {
-  if (mainWindow) {
-    return mainWindow.isAlwaysOnTop();
-  }
-  return false;
+  const value = mainWindow ? mainWindow.isAlwaysOnTop() : false;
+  debugLog('get-always-on-top handler returning:', value);
+  return value;
 });
 
 // Update play state from renderer and update tray icon
@@ -404,6 +432,9 @@ ipcMain.handle('get-settings', () => {
 });
 
 ipcMain.on('save-settings', (event, settings) => {
+  debugLog('save-settings handler called');
+  debugLog('Incoming settings.window:', JSON.stringify(settings.window));
+  debugLog('Current currentSettings.window:', JSON.stringify(currentSettings?.window));
   // Merge incoming settings with current settings
   // IMPORTANT: Preserve the window settings from currentSettings to avoid race conditions
   // The window.alwaysOnTop value is managed by the set-always-on-top handler, which may have
@@ -416,13 +447,16 @@ ipcMain.on('save-settings', (event, settings) => {
     ui: { ...currentSettings?.ui, ...settings.ui },
     playback: { ...currentSettings?.playback, ...settings.playback }
   };
+  debugLog('After merge, currentSettings.window:', JSON.stringify(currentSettings.window));
   saveSettings(currentSettings);
 });
 
 // Update always-on-top setting and save
 ipcMain.on('set-always-on-top', (event, value) => {
+  debugLog('set-always-on-top handler called with value:', value);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setAlwaysOnTop(value);
+    debugLog('Window setAlwaysOnTop applied, isAlwaysOnTop now:', mainWindow.isAlwaysOnTop());
   }
   // Also save to settings (ensure window property exists)
   if (currentSettings) {
@@ -430,6 +464,7 @@ ipcMain.on('set-always-on-top', (event, value) => {
       currentSettings.window = { ...DEFAULT_SETTINGS.window };
     }
     currentSettings.window.alwaysOnTop = value;
+    debugLog('Updated currentSettings.window to:', JSON.stringify(currentSettings.window));
     saveSettings(currentSettings);
   }
 });
