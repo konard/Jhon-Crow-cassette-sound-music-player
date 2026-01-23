@@ -185,10 +185,56 @@ Timing: set-always-on-top=5ms, getAlwaysOnTop=2ms, save-settings=10ms
 
 4. **Add logging for debugging:** Include verbose logging in IPC handlers to track the order of operations during debugging.
 
+## Current Investigation Status (Jan 24, 2026)
+
+The user (@Jhon-Crow) has reported three times that the fix does not work. However, all automated tests pass:
+
+### Test Results (All Passing)
+
+1. **test-settings-flow.js**: Synchronous settings flow simulation - ✅ PASS
+2. **test-async-settings-flow.js**: Async IPC timing simulation - ✅ PASS
+3. **test-bug-reproduction.js**: Race condition scenario - ✅ PASS
+4. **test-toggle-multiple-times.js**: Multiple toggle scenarios - ✅ PASS
+5. **test-actual-file-ops.js**: Real file operations - ✅ PASS
+
+### Debug Logging Added
+
+Comprehensive debug logging has been added to `main.js` to trace the actual behavior in production:
+
+```
+[AlwaysOnTop] App ready, loading settings...
+[AlwaysOnTop] loadSettings() called
+[AlwaysOnTop] Settings file path: /path/to/settings.json
+[AlwaysOnTop] Parsed window settings: {"alwaysOnTop":true}
+[AlwaysOnTop] Checking always-on-top setting: true
+[AlwaysOnTop] Applying always-on-top: true
+```
+
+To enable debug logging, run the app with: `npm start -- --dev` or `npx electron . --dev`
+
+### Pending Investigation
+
+Need more information from user:
+1. How are they testing? (Building from branch? Using released binary?)
+2. What exact behavior are they seeing?
+3. Console logs when running with debug mode
+
+### Possible Remaining Issues
+
+1. **User might be testing different code**: Need to confirm they're using this branch
+2. **Old settings file with corrupted data**: Could be a migration issue
+3. **Platform-specific issue**: Electron's `setAlwaysOnTop` might behave differently on some platforms
+4. **Checkbox state vs window state**: User might be checking checkbox, not actual window behavior
+
 ## Files Changed
 
-- `src/main.js`: Changed `save-settings` handler to use merge semantics and preserve `window` settings
+- `src/main.js`: Changed `save-settings` handler to use merge semantics and preserve `window` settings; Added debug logging
 - `src/renderer.js`: Made `saveCurrentSettings()` async and added `window` property (retained for documentation)
 - `experiments/test-fix-race-condition.js`: New test that verifies the race condition fix
 - `experiments/test-real-race-condition.js`: Test that demonstrates the race condition
-- `docs/case-studies/issue-34/README.md`: Updated case study with race condition analysis
+- `experiments/test-settings-flow.js`: Synchronous settings flow test
+- `experiments/test-async-settings-flow.js`: Async IPC timing test
+- `experiments/test-bug-reproduction.js`: Bug reproduction test
+- `experiments/test-toggle-multiple-times.js`: Multiple toggle scenarios test
+- `experiments/test-actual-file-ops.js`: Real file operations test
+- `docs/case-studies/issue-34/README.md`: Updated case study with race condition analysis and investigation status
