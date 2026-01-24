@@ -209,21 +209,20 @@ async function restorePlaybackState(playbackSettings) {
       audioState.folderPath = playbackSettings.folderPath;
       audioState.audioFiles = result.audioFiles;
 
+      // Restore shuffled playlist if it exists and matches the current audio files
+      if (playbackSettings.shuffledPlaylist && playbackSettings.shuffledPlaylist.length === audioState.audioFiles.length) {
+        audioState.shuffledPlaylist = playbackSettings.shuffledPlaylist;
+      }
+
       // Restore track index, clamping to valid range
       let trackIndex = playbackSettings.currentTrackIndex || 0;
       if (trackIndex >= audioState.audioFiles.length) {
         trackIndex = 0;
       }
 
-      audioState.currentTrackIndex = trackIndex;
-      const track = audioState.audioFiles[trackIndex];
-      updateScreenText(track.name);
+      // Load the track properly (don't add to history on restore)
+      await loadTrack(trackIndex, false);
       updateStatusBar(`Restored: ${audioState.audioFiles.length} tracks`);
-
-      // Restore shuffled playlist if it exists and matches the current audio files
-      if (playbackSettings.shuffledPlaylist && playbackSettings.shuffledPlaylist.length === audioState.audioFiles.length) {
-        audioState.shuffledPlaylist = playbackSettings.shuffledPlaylist;
-      }
     }
   } catch (error) {
     console.error('Error restoring playback state:', error);
