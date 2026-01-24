@@ -5,8 +5,34 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage } = require
 const path = require('path');
 const fs = require('fs');
 
-// Settings file path in user data directory
-const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
+// Function to determine settings file path based on portable mode
+function getSettingsPath() {
+  // Check if running as portable build
+  if (process.env.PORTABLE_EXECUTABLE_DIR) {
+    // For portable builds, store settings next to the executable in a 'data' folder
+    // This ensures true portability - settings travel with the .exe file
+    const dataDir = path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'data');
+
+    // Create data directory if it doesn't exist
+    try {
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+    } catch (error) {
+      console.error('[Settings] Failed to create portable data directory:', error);
+      // Fall back to userData if we can't create the portable directory
+      return path.join(app.getPath('userData'), 'settings.json');
+    }
+
+    return path.join(dataDir, 'settings.json');
+  }
+
+  // For installed builds, use the standard userData directory
+  return path.join(app.getPath('userData'), 'settings.json');
+}
+
+// Settings file path - portable or userData depending on build type
+const SETTINGS_FILE = getSettingsPath();
 
 // Debug logging flag - set to true to enable verbose logging for Always on Top persistence
 const DEBUG_ALWAYS_ON_TOP = true;
@@ -16,6 +42,15 @@ function debugLog(...args) {
     console.log('[AlwaysOnTop]', ...args);
   }
 }
+
+// Log build type and settings location on startup
+console.log('=== Cassette Music Player - Settings Configuration ===');
+console.log('Portable mode:', process.env.PORTABLE_EXECUTABLE_DIR ? 'YES' : 'NO');
+if (process.env.PORTABLE_EXECUTABLE_DIR) {
+  console.log('Portable executable directory:', process.env.PORTABLE_EXECUTABLE_DIR);
+}
+console.log('Settings file location:', SETTINGS_FILE);
+console.log('====================================================');
 
 // Default settings
 const DEFAULT_SETTINGS = {

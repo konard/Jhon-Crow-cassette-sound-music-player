@@ -187,44 +187,69 @@ Timing: set-always-on-top=5ms, getAlwaysOnTop=2ms, save-settings=10ms
 
 ## Current Investigation Status (Jan 24, 2026)
 
-The user (@Jhon-Crow) has reported three times that the fix does not work. However, all automated tests pass:
+### UPDATE: Root Cause Identified - Portable Mode Settings Storage Issue
 
-### Test Results (All Passing)
+The user (@Jhon-Crow) reported four times that the fix does not work when using the **portable .exe build**. All automated tests passed because they tested the race condition fix, which was correct. However, a **different issue** affects portable builds:
 
-1. **test-settings-flow.js**: Synchronous settings flow simulation - ✅ PASS
-2. **test-async-settings-flow.js**: Async IPC timing simulation - ✅ PASS
-3. **test-bug-reproduction.js**: Race condition scenario - ✅ PASS
-4. **test-toggle-multiple-times.js**: Multiple toggle scenarios - ✅ PASS
-5. **test-actual-file-ops.js**: Real file operations - ✅ PASS
+**The Real Problem:** electron-builder's portable mode stores settings in `%appdata%` which is machine-specific and user-specific. Settings do NOT travel with the portable executable.
 
-### Debug Logging Added
+See [portable-mode-analysis.md](./portable-mode-analysis.md) for complete analysis.
 
-Comprehensive debug logging has been added to `main.js` to trace the actual behavior in production:
+### Solution Implemented (Jan 24, 2026)
+
+Modified `src/main.js` to detect portable mode and store settings next to the executable:
+
+```javascript
+function getSettingsPath() {
+  // Check if running as portable build
+  if (process.env.PORTABLE_EXECUTABLE_DIR) {
+    // For portable builds, store settings in 'data' folder next to the .exe
+    const dataDir = path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'data');
+    return path.join(dataDir, 'settings.json');
+  }
+  // For installed builds, use the standard userData directory
+  return path.join(app.getPath('userData'), 'settings.json');
+}
+```
+
+### Test Results
+
+1. **Race Condition Tests** (All Passing) ✅
+   - test-settings-flow.js
+   - test-async-settings-flow.js
+   - test-bug-reproduction.js
+   - test-toggle-multiple-times.js
+   - test-actual-file-ops.js
+
+2. **Portable Mode Test** (Passing) ✅
+   - test-portable-mode.js: Verifies settings storage next to executable
+
+### Debug Logging Enhanced
+
+Added startup logging to show build type and settings location:
 
 ```
-[AlwaysOnTop] App ready, loading settings...
-[AlwaysOnTop] loadSettings() called
-[AlwaysOnTop] Settings file path: /path/to/settings.json
-[AlwaysOnTop] Parsed window settings: {"alwaysOnTop":true}
-[AlwaysOnTop] Checking always-on-top setting: true
-[AlwaysOnTop] Applying always-on-top: true
+=== Cassette Music Player - Settings Configuration ===
+Portable mode: YES
+Portable executable directory: C:\Users\User\Desktop
+Settings file location: C:\Users\User\Desktop\data\settings.json
+====================================================
 ```
 
-To enable debug logging, run the app with: `npm start -- --dev` or `npx electron . --dev`
+### Testing Instructions for User
 
-### Pending Investigation
+For portable .exe builds:
+1. Download the portable .exe from the PR artifacts
+2. Run the .exe (it will create a 'data' folder automatically)
+3. Enable "Always on Top" in settings
+4. Close the app
+5. Verify that a 'data' folder was created next to the .exe
+6. Open 'data/settings.json' to verify the setting was saved
+7. Restart the app and verify "Always on Top" is still enabled
 
-Need more information from user:
-1. How are they testing? (Building from branch? Using released binary?)
-2. What exact behavior are they seeing?
-3. Console logs when running with debug mode
+### Previous Investigation (Race Condition)
 
-### Possible Remaining Issues
-
-1. **User might be testing different code**: Need to confirm they're using this branch
-2. **Old settings file with corrupted data**: Could be a migration issue
-3. **Platform-specific issue**: Electron's `setAlwaysOnTop` might behave differently on some platforms
-4. **Checkbox state vs window state**: User might be checking checkbox, not actual window behavior
+The race condition fix was correct and all tests pass. The issue the user experienced was a separate problem specific to portable builds, not a race condition issue.
 
 ## Files Changed
 
