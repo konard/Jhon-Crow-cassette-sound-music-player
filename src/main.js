@@ -5,7 +5,32 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage } = require
 const path = require('path');
 const fs = require('fs');
 
+// Configure portable mode before accessing userData
+// In portable mode, settings are stored relative to the executable
+const isPortable = process.env.PORTABLE_EXECUTABLE_DIR !== undefined;
+
+if (isPortable) {
+  const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+  const portableUserData = path.join(portableDir, 'UserData');
+
+  try {
+    // Ensure UserData directory exists
+    if (!fs.existsSync(portableUserData)) {
+      fs.mkdirSync(portableUserData, { recursive: true });
+    }
+
+    // Set userData path for portable mode
+    app.setPath('userData', portableUserData);
+    console.log('[Portable Mode] Settings will be stored in:', portableUserData);
+  } catch (error) {
+    console.error('[Portable Mode] Failed to set userData path:', error);
+    // Fall back to default behavior
+  }
+}
+
 // Settings file path in user data directory
+// In portable mode: <exe-dir>/UserData/settings.json
+// In installed mode: C:\Users\<user>\AppData\Local\cassette-music-player\settings.json
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
 
 // Default settings
