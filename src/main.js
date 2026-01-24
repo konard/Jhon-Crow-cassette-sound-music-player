@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Configure portable mode before accessing userData
-// In portable mode, settings are stored relative to the executable
+// In portable mode, all app data is stored relative to the executable
 const isPortable = process.env.PORTABLE_EXECUTABLE_DIR !== undefined;
 
 if (isPortable) {
@@ -19,11 +19,14 @@ if (isPortable) {
       fs.mkdirSync(portableUserData, { recursive: true });
     }
 
-    // Set userData path for portable mode
+    // Set all storage paths to be within UserData folder
+    // This prevents Electron from creating additional folders next to the executable
     app.setPath('userData', portableUserData);
-    console.log('[Portable Mode] Settings will be stored in:', portableUserData);
+    app.setPath('sessionData', portableUserData);
+
+    console.log('[Portable Mode] All app data will be stored in:', portableUserData);
   } catch (error) {
-    console.error('[Portable Mode] Failed to set userData path:', error);
+    console.error('[Portable Mode] Failed to configure portable storage paths:', error);
     // Fall back to default behavior
   }
 }
